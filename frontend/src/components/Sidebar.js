@@ -1,8 +1,11 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { LayoutDashboard, CalendarDays, LogOut, Activity } from "lucide-react";
+import { useState, useEffect } from "react";
+import api from "@/lib/api";
+import { LayoutDashboard, CalendarDays, LogOut, Activity, Cloud, HardDrive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Scaled Objects" },
@@ -12,11 +15,18 @@ const navItems = [
 export default function Sidebar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [k8sStatus, setK8sStatus] = useState(null);
+
+  useEffect(() => {
+    api.get("/k8s-status").then(({ data }) => setK8sStatus(data)).catch(() => {});
+  }, []);
 
   const handleLogout = async () => {
     await logout();
     navigate("/login");
   };
+
+  const isRealK8s = k8sStatus?.mode === "in-cluster" && k8sStatus?.connected;
 
   return (
     <aside className="fixed left-0 top-0 bottom-0 w-60 bg-white border-r border-slate-200 flex flex-col z-40">
@@ -52,6 +62,28 @@ export default function Sidebar() {
           </NavLink>
         ))}
       </nav>
+      {k8sStatus && (
+        <div className="px-3 pb-3">
+          <div className="bg-slate-50 border border-slate-200 rounded-md p-2.5" data-testid="k8s-status-indicator">
+            <div className="flex items-center gap-2">
+              {isRealK8s ? (
+                <Cloud className="w-3.5 h-3.5 text-blue-500" />
+              ) : (
+                <HardDrive className="w-3.5 h-3.5 text-amber-500" />
+              )}
+              <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+                K8s Mode
+              </span>
+            </div>
+            <div className="mt-1 flex items-center gap-1.5">
+              <span className={`w-1.5 h-1.5 rounded-full ${isRealK8s ? "bg-blue-500" : "bg-amber-500"}`} />
+              <span className="text-xs font-mono text-slate-700">
+                {isRealK8s ? "in-cluster" : "mock (local DB)"}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
       <Separator />
       <div className="p-4 space-y-3">
         <div className="min-w-0">

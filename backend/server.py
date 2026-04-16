@@ -19,6 +19,7 @@ import bcrypt
 import jwt as pyjwt
 from datetime import datetime, timezone, timedelta
 from contextlib import asynccontextmanager
+from k8s_service import create_k8s_service, K8sScaledObjectService
 
 # ============ DATABASE ============
 DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite+aiosqlite:///{ROOT_DIR}/keda_dashboard.db")
@@ -206,6 +207,10 @@ def event_to_dict(e, so_name="Unknown"):
     }
 
 
+# ============ K8S SERVICE ============
+k8s_service: K8sScaledObjectService = None
+
+
 # ============ SEED DATA ============
 async def seed_data():
     async with async_session_maker() as session:
@@ -294,10 +299,18 @@ async def seed_data():
 # ============ APP LIFECYCLE ============
 @asynccontextmanager
 async def lifespan(app):
+    global k8s_service
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     await seed_data()
-    logger.info("Database initialized and seeded")
+
+    # Initialize K8s service
+    k8s_service = create_k8s_service(
+        session_maker=async_session_maker,
+        models={"ScaledObjectModel": ScaledObjectModel, "select": select}
+    )
+    logger.info(f"K8s service initialized: mode={k8s_service.get_mode()}, connected={k8s_service.is_connected()}")
+
     yield
     await engine.dispose()
 
@@ -339,72 +352,61 @@ async def logout(response: Response):
     return {"message": "Logged out"}
 
 
-# ============ SCALED OBJECT ROUTES ============
+# ============ SCALED OBJECT ROUTES (via K8s Service) ============
 @api_router.get("/scaled-objects")
 async def list_scaled_objects(namespace: Optional[str] = None, scaler_type: Optional[str] = None, current_user: dict = Depends(get_current_user)):
-    async with async_session_maker() as session:
-        query = select(ScaledObjectModel)
-        if namespace:
-            query = query.where(ScaledObjectModel.namespace == namespace)
-        if scaler_type:
-            query = query.where(ScaledObjectModel.scaler_type == scaler_type)
-        result = await session.execute(query.order_by(ScaledObjectModel.name))
-        return [so_to_dict(obj) for obj in result.scalars().all()]
+    try:
+        return await k8s_service.list_objects(namespace=namespace, scaler_type=scaler_type)
+    except Exception as e:
+        logger.error(f"Failed to list ScaledObjects: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list ScaledObjects: {str(e)}")
 
 
 @api_router.post("/scaled-objects")
 async def create_scaled_object(data: ScaledObjectCreate, current_user: dict = Depends(get_current_user)):
-    async with async_session_maker() as session:
-        obj = ScaledObjectModel(
-            name=data.name, namespace=data.namespace, scaler_type=data.scaler_type,
-            target_deployment=data.target_deployment, min_replicas=data.min_replicas,
-            max_replicas=data.max_replicas, cooldown_period=data.cooldown_period,
-            polling_interval=data.polling_interval, triggers_json=json.dumps(data.triggers),
-        )
-        session.add(obj)
-        await session.commit()
-        await session.refresh(obj)
-        return so_to_dict(obj)
+    try:
+        result = await k8s_service.create_object(data.model_dump())
+        return result
+    except Exception as e:
+        logger.error(f"Failed to create ScaledObject: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create ScaledObject: {str(e)}")
 
 
-@api_router.get("/scaled-objects/{obj_id}")
+@api_router.get("/scaled-objects/{obj_id:path}")
 async def get_scaled_object(obj_id: str, current_user: dict = Depends(get_current_user)):
-    async with async_session_maker() as session:
-        result = await session.execute(select(ScaledObjectModel).where(ScaledObjectModel.id == obj_id))
-        obj = result.scalar_one_or_none()
-        if not obj:
-            raise HTTPException(status_code=404, detail="ScaledObject not found")
-        return so_to_dict(obj)
+    result = await k8s_service.get_object(obj_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="ScaledObject not found")
+    return result
 
 
-@api_router.put("/scaled-objects/{obj_id}")
+@api_router.put("/scaled-objects/{obj_id:path}")
 async def update_scaled_object(obj_id: str, data: ScaledObjectUpdate, current_user: dict = Depends(get_current_user)):
-    async with async_session_maker() as session:
-        result = await session.execute(select(ScaledObjectModel).where(ScaledObjectModel.id == obj_id))
-        obj = result.scalar_one_or_none()
-        if not obj:
+    update_data = data.model_dump(exclude_unset=True)
+    try:
+        result = await k8s_service.update_object(obj_id, update_data)
+        if not result:
             raise HTTPException(status_code=404, detail="ScaledObject not found")
-        update_data = data.model_dump(exclude_unset=True)
-        if "triggers" in update_data:
-            update_data["triggers_json"] = json.dumps(update_data.pop("triggers"))
-        update_data["updated_at"] = datetime.now(timezone.utc)
-        for key, value in update_data.items():
-            setattr(obj, key, value)
-        await session.commit()
-        await session.refresh(obj)
-        return so_to_dict(obj)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update ScaledObject: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update ScaledObject: {str(e)}")
 
 
-@api_router.delete("/scaled-objects/{obj_id}")
+@api_router.delete("/scaled-objects/{obj_id:path}")
 async def delete_scaled_object(obj_id: str, current_user: dict = Depends(get_current_user)):
-    async with async_session_maker() as session:
-        result = await session.execute(select(ScaledObjectModel).where(ScaledObjectModel.id == obj_id))
-        obj = result.scalar_one_or_none()
-        if not obj:
+    try:
+        result = await k8s_service.delete_object(obj_id)
+        if not result:
             raise HTTPException(status_code=404, detail="ScaledObject not found")
-        await session.delete(obj)
-        await session.commit()
-        return {"message": "Deleted"}
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete ScaledObject: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete ScaledObject: {str(e)}")
 
 
 # ============ CRON EVENT ROUTES ============
@@ -475,20 +477,34 @@ async def delete_cron_event(event_id: str, current_user: dict = Depends(get_curr
         return {"message": "Deleted"}
 
 
-# ============ NAMESPACE ROUTES ============
+# ============ NAMESPACE ROUTES (via K8s Service) ============
 @api_router.get("/namespaces")
 async def list_namespaces(current_user: dict = Depends(get_current_user)):
-    async with async_session_maker() as session:
-        result = await session.execute(select(ScaledObjectModel.namespace).distinct())
-        return [row[0] for row in result.all()]
+    try:
+        return await k8s_service.list_namespaces()
+    except Exception as e:
+        logger.error(f"Failed to list namespaces: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# ============ SCALER TYPES ============
+# ============ SCALER TYPES (via K8s Service) ============
 @api_router.get("/scaler-types")
 async def list_scaler_types(current_user: dict = Depends(get_current_user)):
-    async with async_session_maker() as session:
-        result = await session.execute(select(ScaledObjectModel.scaler_type).distinct())
-        return [row[0] for row in result.all()]
+    try:
+        return await k8s_service.list_scaler_types()
+    except Exception as e:
+        logger.error(f"Failed to list scaler types: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============ K8S STATUS ============
+@api_router.get("/k8s-status")
+async def get_k8s_status(current_user: dict = Depends(get_current_user)):
+    return {
+        "mode": k8s_service.get_mode() if k8s_service else "unknown",
+        "connected": k8s_service.is_connected() if k8s_service else False,
+        "configured_mode": os.environ.get("K8S_MODE", "mock"),
+    }
 
 
 # ============ HEALTH ============

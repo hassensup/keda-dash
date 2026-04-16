@@ -304,6 +304,26 @@ class KEDADashboardTester:
         
         return success_create and success_update and success_delete
 
+    def test_k8s_status(self):
+        """Test K8s status endpoint"""
+        success, response = self.run_test(
+            "K8s Status",
+            "GET",
+            "k8s-status",
+            200
+        )
+        if success:
+            print(f"   Mode: {response.get('mode')}")
+            print(f"   Connected: {response.get('connected')}")
+            print(f"   Configured Mode: {response.get('configured_mode')}")
+            # Verify expected fields are present
+            required_fields = ['mode', 'connected', 'configured_mode']
+            has_all_fields = all(field in response for field in required_fields)
+            if not has_all_fields:
+                print(f"❌ Missing required fields. Expected: {required_fields}, Got: {list(response.keys())}")
+                return False
+        return success
+
     def test_auth_logout(self):
         """Test logout"""
         success, response = self.run_test(
@@ -336,6 +356,7 @@ def main():
 
     # Test authenticated endpoints
     tester.test_auth_me()
+    tester.test_k8s_status()  # Test new K8s status endpoint
     tester.test_scaled_objects_list()
     tester.test_scaled_objects_filters()
     tester.test_namespaces()
