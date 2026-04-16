@@ -39,6 +39,7 @@ export default function DashboardPage() {
   const navigate = useNavigate();
 
   const fetchData = useCallback(async () => {
+    setLoading(true);
     try {
       const params = {};
       if (filterNs && filterNs !== "all") params.namespace = filterNs;
@@ -189,7 +190,7 @@ export default function DashboardPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                      <div className="flex items-center justify-end gap-1">
                         <Button
                           variant="ghost"
                           size="icon"

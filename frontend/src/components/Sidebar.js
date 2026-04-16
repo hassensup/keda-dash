@@ -53,22 +53,20 @@ export default function Sidebar() {
         ))}
       </nav>
       <Separator />
-      <div className="p-4">
-        <div className="flex items-center justify-between">
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-slate-900 truncate">{user?.name || "User"}</p>
-            <p className="text-[10px] text-slate-500 truncate">{user?.email}</p>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleLogout}
-            data-testid="logout-btn"
-            className="h-8 w-8 text-slate-500 hover:text-slate-900"
-          >
-            <LogOut className="w-4 h-4" />
-          </Button>
+      <div className="p-4 space-y-3">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-slate-900 truncate">{user?.name || "User"}</p>
+          <p className="text-[10px] text-slate-500 truncate">{user?.email}</p>
         </div>
+        <Button
+          variant="outline"
+          onClick={handleLogout}
+          data-testid="logout-btn"
+          className="w-full h-8 text-xs text-slate-600 hover:text-slate-900 gap-2"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          Logout
+        </Button>
       </div>
     </aside>
   );
