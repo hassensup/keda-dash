@@ -39,7 +39,7 @@ class UserModel(Base):
     password_hash = Column(String, nullable=False)
     name = Column(String, nullable=False)
     role = Column(String, default="user")
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now())
 
 
 class ScaledObjectModel(Base):
@@ -55,8 +55,8 @@ class ScaledObjectModel(Base):
     polling_interval = Column(Integer, default=30)
     triggers_json = Column(Text, default="[]")
     status = Column(String, default="Active")
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now())
+    updated_at = Column(DateTime, default=lambda: datetime.now())
     cron_events = relationship("CronEventModel", back_populates="scaled_object", cascade="all, delete-orphan")
 
 
@@ -70,8 +70,8 @@ class CronEventModel(Base):
     event_date = Column(String, nullable=False)
     start_time = Column(String, default="00:00")
     end_time = Column(String, default="23:59")
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now())
+    updated_at = Column(DateTime, default=lambda: datetime.now())
     scaled_object = relationship("ScaledObjectModel", back_populates="cron_events")
 
 
@@ -455,7 +455,7 @@ async def update_cron_event(event_id: str, data: CronEventUpdate, current_user: 
         if not event:
             raise HTTPException(status_code=404, detail="CronEvent not found")
         update_data = data.model_dump(exclude_unset=True)
-        update_data["updated_at"] = datetime.now(timezone.utc)
+        update_data["updated_at"] = datetime.now()
         for key, value in update_data.items():
             setattr(event, key, value)
         await session.commit()
