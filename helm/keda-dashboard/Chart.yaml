@@ -1,0 +1,13 @@
+apiVersion: v2
+name: keda-dashboard
+description: A Helm chart for KEDA Dashboard - GUI for managing KEDA ScaledObjects
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - keda
+  - kubernetes
+  - autoscaling
+  - dashboard
+maintainers:
+  - name: KEDA Dashboard Team
