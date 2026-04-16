@@ -40,6 +40,19 @@ Interface graphique pour KEDA permettant :
 - Cron Calendar with monthly grid view and event management
 - Complete Helm chart with PostgreSQL StatefulSet, RBAC, Ingress
 
+## K8s Service Layer (2026-04-16)
+- Created `/app/backend/k8s_service.py` with abstract K8sScaledObjectService interface
+- MockK8sService: Uses SQLite database (dev fallback)
+- RealK8sService: Uses `kubernetes` Python client with `CustomObjectsApi` for KEDA CRDs
+  - Supports `keda.sh/v1alpha1` ScaledObjects
+  - In-cluster config with kubeconfig fallback
+  - Async via `asyncio.to_thread()` wrapper
+  - CRD <-> API dict bidirectional conversion
+  - Graceful name/namespace change via delete+recreate
+- K8S_MODE env controls mode, auto-fallback to mock if K8s unavailable
+- /api/k8s-status endpoint reports connection status
+- Frontend sidebar shows K8s mode indicator
+
 ## Prioritized Backlog
 ### P0
 - (done) All core features implemented
