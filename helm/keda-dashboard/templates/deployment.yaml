@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "keda-dashboard.fullname" . }}
+  name: {{ include "keda-dashboard.fullname" . }}-backend
   labels:
     {{- include "keda-dashboard.labels" . | nindent 4 }}
 spec:
@@ -9,10 +9,12 @@ spec:
   selector:
     matchLabels:
       {{- include "keda-dashboard.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
   template:
     metadata:
       labels:
         {{- include "keda-dashboard.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -20,9 +22,9 @@ spec:
       {{- end }}
       serviceAccountName: {{ include "keda-dashboard.serviceAccountName" . }}
       containers:
-        - name: {{ .Chart.Name }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+        - name: backend
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           ports:
             - name: http
               containerPort: 8001
@@ -35,22 +37,50 @@ spec:
           livenessProbe:
             httpGet:
               path: /api/health
-              port: http
+              port: 8001
             initialDelaySeconds: 15
             periodSeconds: 30
           readinessProbe:
             httpGet:
               path: /api/health
-              port: http
+              port: 8001
             initialDelaySeconds: 5
             periodSeconds: 10
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "keda-dashboard.fullname" . }}-frontend
+  labels:
+    {{- include "keda-dashboard.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "keda-dashboard.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      labels:
+        {{- include "keda-dashboard.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: frontend
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.tolerations }}
-      tolerations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      containers:
+        - name: frontend
+          image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
+          imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: REACT_APP_BACKEND_URL
+              value: {{ .Values.frontend.env.REACT_APP_BACKEND_URL | quote }}
+          resources:
+            {{- toYaml .Values.frontend.resources | nindent 12 }}

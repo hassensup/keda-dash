@@ -1,9 +1,46 @@
 replicaCount: 1
 
-image:
-  repository: keda-dashboard
-  pullPolicy: IfNotPresent
-  tag: "latest"
+# Backend Configuration
+backend:
+  image:
+    repository: keda-dashboard-backend
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  service:
+    port: 8001
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  config:
+    jwtSecret: "change-me-in-production-use-a-long-random-string"
+    adminEmail: "admin@example.com"
+    adminPassword: "admin123"
+    corsOrigins: "*"
+    k8sMode: "in-cluster"
+
+# Frontend Configuration
+frontend:
+  image:
+    repository: keda-dashboard-frontend
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  service:
+    port: 3000
+  env:
+    # This should be the internal K8s DNS name of the backend service
+    # or the public URL if the frontend is client-side rendered
+    REACT_APP_BACKEND_URL: "http://keda-dashboard-backend.keda-dashboard.svc.cluster.local:8001"
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
 
 imagePullSecrets: []
 nameOverride: ""
@@ -17,10 +54,6 @@ serviceAccount:
 rbac:
   create: true
 
-service:
-  type: ClusterIP
-  port: 8001
-
 ingress:
   enabled: false
   className: "nginx"
@@ -28,17 +61,13 @@ ingress:
   hosts:
     - host: keda-dashboard.local
       paths:
+        - path: /api
+          serviceName: backend
+          port: 8001
         - path: /
-          pathType: Prefix
+          serviceName: frontend
+          port: 3000
   tls: []
-
-resources:
-  limits:
-    cpu: 500m
-    memory: 512Mi
-  requests:
-    cpu: 100m
-    memory: 128Mi
 
 postgresql:
   enabled: true
@@ -60,13 +89,6 @@ postgresql:
     requests:
       cpu: 100m
       memory: 128Mi
-
-config:
-  jwtSecret: "change-me-in-production-use-a-long-random-string"
-  adminEmail: "admin@example.com"
-  adminPassword: "admin123"
-  corsOrigins: "*"
-  k8sMode: "in-cluster"
 
 nodeSelector: {}
 tolerations: []
