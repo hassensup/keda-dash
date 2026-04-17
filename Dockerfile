@@ -25,7 +25,7 @@ COPY backend/ ./backend/
 COPY --from=frontend-build /app/frontend/build ./frontend/build
 
 # Create a startup script that serves both
-RUN echo '#!/bin/bash\ncd /app/backend && uvicorn server:app --host 0.0.0.0 --port 8001' > /app/start.sh && chmod +x /app/start.sh
+RUN echo '#!/bin/bash\nuvicorn backend.server:app --host 0.0.0.0 --port 8001' > /app/start.sh && chmod +x /app/start.sh
 
 EXPOSE 8001
 

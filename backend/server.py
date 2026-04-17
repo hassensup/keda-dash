@@ -5,6 +5,8 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
 from starlette.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, relationship
@@ -523,3 +525,36 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ============ STATIC FILES FOR FRONTEND ============
+# Mount static files from frontend build directory
+frontend_build_path = ROOT_DIR.parent / "frontend" / "build"
+if frontend_build_path.exists():
+    # Custom StaticFiles class to serve index.html for SPA routes
+    class SPAStaticFiles(StaticFiles):
+        async def get_response(self, path: str, scope):
+            try:
+                return await super().get_response(path, scope)
+            except HTTPException as exc:
+                if exc.status_code == 404:
+                    request_path = scope.get("path", "")
+                    # Exclude API routes
+                    if request_path.startswith("/api/"):
+                        raise exc
+                    # Exclude paths with file extensions (static assets)
+                    if "." in request_path.split("/")[-1]:
+                        raise exc
+                    # Try to serve index.html for SPA routing
+                    index_path = "index.html"
+                    try:
+                        return await super().get_response(index_path, scope)
+                    except HTTPException:
+                        # If index.html not found, return original 404
+                        raise exc
+                else:
+                    raise
+
+    app.mount("/", SPAStaticFiles(directory=str(frontend_build_path), html=True), name="frontend")
+    logger.info(f"Serving frontend static files from: {frontend_build_path}")
+else:
+    logger.warning(f"Frontend build directory not found at: {frontend_build_path}. Frontend will not be served.")
