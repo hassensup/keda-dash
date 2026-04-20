@@ -269,7 +269,7 @@ async def seed_data():
 
         # Seed cron events
         result = await session.execute(select(ScaledObjectModel).where(ScaledObjectModel.scaler_type == "cron"))
-        cron_so = result.scalar_one_or_none()
+        cron_so = result.scalars().first()
         if cron_so:
             result = await session.execute(select(CronEventModel))
             if not result.scalars().first():
