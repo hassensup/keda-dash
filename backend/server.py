@@ -434,8 +434,30 @@ async def list_cron_events(scaled_object_id: Optional[str] = None, month: Option
 @api_router.post("/cron-events")
 async def create_cron_event(data: CronEventCreate, current_user: dict = Depends(get_current_user)):
     async with async_session_maker() as session:
-        result = await session.execute(select(ScaledObjectModel).where(ScaledObjectModel.id == data.scaled_object_id))
-        so = result.scalar_one_or_none()
+        if "/" in data.scaled_object_id:
+            # Handle 'namespace/name' format
+            ns, name = data.scaled_object_id.split("/", 1)
+            result = await session.execute(
+                select(ScaledObjectModel).where(
+                    ScaledObjectModel.id == data.scaled_object_id,
+                    # This part is unlikely to match if it's namespace/name,
+                    # but we'll check name/namespace as well
+                )
+            )
+            so = result.scalar_one_or_none()
+            if not so:
+                result = await session.execute(
+                    select(ScaledObjectModel).where(
+                        ScaledObjectModel.name == name,
+                        ScaledObjectModel.namespace == ns
+                    )
+                )
+                so = result.scalar_one_or_none()
+        else:
+            # Handle UUID format
+            result = await session.execute(select(ScaledObjectModel).where(ScaledObjectModel.id == data.scaled_object_id))
+            so = result.scalar_one_or_none()
+
         if not so:
             raise HTTPException(status_code=404, detail="ScaledObject not found")
         event = CronEventModel(
