@@ -78,7 +78,7 @@ export default function CronCalendarPage() {
           let nextDate = interval.next();
 
           // Move to the start of the current month for projection
-          while (nextDate << start start) {
+          while (nextDate < start) {
             nextDate = interval.next();
           }
 
