@@ -254,7 +254,7 @@ export default function ScaledObjectDetailPage() {
                           <Label className="text-xs text-slate-500">{field.label}</Label>
                           <Select
                             value={trigger.metadata?.[field.key] || field.default}
-                            onValueChange={(v) => updateTriggerMeta(idx, field.key, v)}
+                            onValueChange={(v) => updateTriggerField(idx, field.key, v)}
                           >
                             <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                             <SelectContent>
@@ -269,7 +269,7 @@ export default function ScaledObjectDetailPage() {
                           <Label className="text-xs text-slate-500">{field.label}</Label>
                           <Input
                             value={trigger.metadata?.[field.key] || ""}
-                            onChange={(e) => updateTriggerMeta(idx, field.key, e.target.value)}
+                            onChange={(e) => updateTriggerField(idx, field.key, e.target.value)}
                             className={`h-8 text-xs ${field.mono ? "font-mono" : ""}`}
                             data-testid={`trigger-${idx}-${field.key}`}
                           />
