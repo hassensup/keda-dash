@@ -65,7 +65,7 @@ const SCALER_FIELDS = {
 const SCALER_TYPE_LIST = Object.keys(SCALER_FIELDS);
 
 export default function ScaledObjectDetailPage() {
-  const { id } = useParams();
+  const { "*" : id } = useParams();
   const isNew = id === "new";
   const navigate = useNavigate();
   const [loading, setLoading] = useState(!isNew);
