@@ -460,8 +460,12 @@ async def create_cron_event(data: CronEventCreate, current_user: dict = Depends(
 
         if not so:
             raise HTTPException(status_code=404, detail="ScaledObject not found")
+
+        # Ensure we store the ACTUAL internal ID (UUID) in the cron event
+        # to maintain database integrity and avoid future lookup issues
+        so_id_to_store = so.id
         event = CronEventModel(
-            scaled_object_id=data.scaled_object_id, name=data.name, timezone_str=data.timezone_str,
+            scaled_object_id=so_id_to_store, name=data.name, timezone_str=data.timezone_str,
             desired_replicas=data.desired_replicas, event_date=data.event_date,
             start_time=data.start_time, end_time=data.end_time,
         )
