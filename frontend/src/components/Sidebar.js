@@ -35,7 +35,7 @@ export default function Sidebar() {
           <div className="w-8 h-8 rounded-md bg-slate-900 flex items-center justify-center">
             <Activity className="w-4 h-4 text-white" />
           </div>
-          <div>
+          <div className="flex flex-col">
             <h1 className="text-sm font-semibold text-slate-900 tracking-tight leading-none">KEDA</h1>
             <p className="text-[10px] font-medium text-slate-500 uppercase tracking-[0.1em]">Dashboard</p>
           </div>

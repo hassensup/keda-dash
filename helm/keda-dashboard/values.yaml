@@ -1,9 +1,26 @@
 replicaCount: 1
 
-image:
-  repository: keda-dashboard
-  pullPolicy: IfNotPresent
-  tag: "latest"
+# Backend Configuration
+backend:
+  image:
+    repository: keda-dashboard-backend
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  service:
+    port: 8001
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  config:
+    jwtSecret: "change-me-in-production-use-a-long-random-string"
+    adminEmail: "admin@example.com"
+    adminPassword: "admin123"
+    corsOrigins: "*"
+    k8sMode: "in-cluster"
 
 imagePullSecrets: []
 nameOverride: ""
@@ -17,10 +34,6 @@ serviceAccount:
 rbac:
   create: true
 
-service:
-  type: ClusterIP
-  port: 8001
-
 ingress:
   enabled: false
   className: "nginx"
@@ -28,17 +41,10 @@ ingress:
   hosts:
     - host: keda-dashboard.local
       paths:
-        - path: /
-          pathType: Prefix
+        - path: /api
+          serviceName: backend
+          port: 8001
   tls: []
-
-resources:
-  limits:
-    cpu: 500m
-    memory: 512Mi
-  requests:
-    cpu: 100m
-    memory: 128Mi
 
 postgresql:
   enabled: true
@@ -60,13 +66,6 @@ postgresql:
     requests:
       cpu: 100m
       memory: 128Mi
-
-config:
-  jwtSecret: "change-me-in-production-use-a-long-random-string"
-  adminEmail: "admin@example.com"
-  adminPassword: "admin123"
-  corsOrigins: "*"
-  k8sMode: "in-cluster"
 
 nodeSelector: {}
 tolerations: []

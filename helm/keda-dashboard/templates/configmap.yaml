@@ -5,6 +5,6 @@ metadata:
   labels:
     {{- include "keda-dashboard.labels" . | nindent 4 }}
 data:
-  CORS_ORIGINS: {{ .Values.config.corsOrigins | quote }}
-  ADMIN_EMAIL: {{ .Values.config.adminEmail | quote }}
-  K8S_MODE: {{ .Values.config.k8sMode | quote }}
+  CORS_ORIGINS: {{ .Values.backend.config.corsOrigins| quote }}
+  ADMIN_EMAIL: {{ .Values.backend.config.adminEmail | quote }}
+  K8S_MODE: {{ .Values.backend.config.k8sMode | quote }}
