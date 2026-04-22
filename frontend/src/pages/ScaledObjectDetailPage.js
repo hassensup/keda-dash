@@ -87,10 +87,14 @@ export default function ScaledObjectDetailPage() {
 
   const updateField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
-  const updateTriggerMeta = (idx, metaKey, value) => {
+  const updateTriggerField = (idx, key, value, isMeta = true) => {
     setForm((prev) => {
       const triggers = [...prev.triggers];
-      triggers[idx] = { ...triggers[idx], metadata: { ...triggers[idx].metadata, [metaKey]: value } };
+      if (isMeta) {
+        triggers[idx] = { ...triggers[idx], metadata: { ...triggers[idx].metadata, [key]: value } };
+      } else {
+        triggers[idx] = { ...triggers[idx], [key]: value };
+      }
       return { ...prev, triggers };
     });
   };
@@ -98,10 +102,16 @@ export default function ScaledObjectDetailPage() {
   const addTrigger = () => {
     const fields = SCALER_FIELDS[form.scaler_type] || [];
     const metadata = {};
-    fields.forEach((f) => { metadata[f.key] = f.default; });
+    fields.forEach((f) => {
+      if (f.key === "metricType") {
+        // metricType will be handled at the top level of the trigger object
+      } else {
+        metadata[f.key] = f.default;
+      }
+    });
     setForm((prev) => ({
       ...prev,
-      triggers: [...prev.triggers, { type: form.scaler_type, metadata }],
+      triggers: [...prev.triggers, { type: form.scaler_type, metricType: SCALER_FIELDS[form.scaler_type]?.find(f => f.key === 'metricType')?.default || "", metadata }],
     }));
   };
 
