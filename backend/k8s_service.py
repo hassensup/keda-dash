@@ -120,12 +120,19 @@ class MockK8sService(K8sScaledObjectService):
             obj = result.scalar_one_or_none()
             if not obj:
                 return None
+
+            logger.info(f"Updating ScaledObject {obj_id} with data: {data}")
+
             if "triggers" in data:
                 data["triggers_json"] = json.dumps(data.pop("triggers"))
+
             data["updated_at"] = datetime.now(timezone.utc)
+
             for key, value in data.items():
                 if hasattr(obj, key):
+                    logger.debug(f"Setting {key} = {value}")
                     setattr(obj, key, value)
+
             await session.commit()
             await session.refresh(obj)
             return self._to_dict(obj)
