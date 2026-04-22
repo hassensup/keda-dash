@@ -34,7 +34,7 @@ function AppRoutes() {
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<DashboardPage />} />
-        <Route path="scaled-objects/:id" element={<ScaledObjectDetailPage />} />
+        <Route path="scaled-objects/*" element={<ScaledObjectDetailPage />} />
         <Route path="cron-calendar" element={<CronCalendarPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
