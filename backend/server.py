@@ -438,8 +438,7 @@ async def create_cron_event(data: CronEventCreate, current_user: dict = Depends(
         so_dict = await k8s_service.get_object(data.scaled_object_id)
 
         if not so_dict:
-            # FALLBACK: If k8s_service fails (e.g. in-cluster mode but looking for a mock object, or vice versa),
-            # try a direct database lookup by name/namespace as a last resort.
+            # FALLBACK: If k8s_service fails, try a direct database lookup by name/namespace
             if "/" in data.scaled_object_id:
                 ns, name = data.scaled_object_id.split("/", 1)
                 result = await session.execute(
@@ -451,23 +450,19 @@ async def create_cron_event(data: CronEventCreate, current_user: dict = Depends(
                 db_so = result.scalar_one_or_none()
                 if db_so:
                     so_dict = so_to_dict(db_so)
-                else:
-                    so_dict = None
             else:
                 result = await session.execute(select(ScaledObjectModel).where(ScaledObjectModel.id == data.scaled_object_id))
                 db_so = result.scalar_one_or_none()
                 if db_so:
                     so_dict = so_to_dict(db_so)
-                else:
-                    so_dict = None
 
         if not so_dict:
             logger.error(f"ScaledObject not found for ID: {data.scaled_object_id}")
             raise HTTPException(status_code=404, detail=f"ScaledObject not found: {data.scaled_object_id}")
 
-        # Resolve the final internal UUID for the foreign key
+        # Normalize the ID to a UUID for the database foreign key
         so_id_to_store = so_dict["id"]
-        if k8s_service.get_mode() != "mock" and "/" in so_id_to_store:
+        if "/" in so_id_to_store:
             ns, name = so_id_to_store.split("/", 1)
             result = await session.execute(
                 select(ScaledObjectModel).where(
