@@ -74,13 +74,10 @@ export default function CronCalendarPage() {
           const cronExpr = trigger.metadata?.start;
           if (!cronExpr) return;
 
-          const interval = cronParser.parseExpression(cronExpr);
+          const interval = cronParser.parseExpression(cronExpr, {
+            currentDate: start,
+          });
           let nextDate = interval.next();
-
-          // Move to the start of the current month for projection
-          while (nextDate < start) {
-            nextDate = interval.next();
-          }
 
           while (nextDate <= end) {
             const dateStr = format(nextDate, "yyyy-MM-dd");
