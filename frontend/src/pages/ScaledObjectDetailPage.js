@@ -119,7 +119,8 @@ export default function ScaledObjectDetailPage() {
         await api.post("/scaled-objects", form);
         toast.success("ScaledObject created");
       } else {
-        await api.put(`/scaled-objects/${id}`, form);
+        const { id: _id, ...updateData } = form;
+        await api.put(`/scaled-objects/${id}`, updateData);
         toast.success("ScaledObject updated");
       }
       navigate("/");
