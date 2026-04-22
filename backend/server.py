@@ -434,35 +434,31 @@ async def list_cron_events(scaled_object_id: Optional[str] = None, month: Option
 @api_router.post("/cron-events")
 async def create_cron_event(data: CronEventCreate, current_user: dict = Depends(get_current_user)):
     async with async_session_maker() as session:
+        # Log the incoming ID for debugging
+        logger.info(f"Creating cron event for ScaledObject ID: {data.scaled_object_id}")
+
+        so = None
         if "/" in data.scaled_object_id:
             # Handle 'namespace/name' format
             ns, name = data.scaled_object_id.split("/", 1)
+            logger.info(f"Searching by namespace/name: {ns}/{name}")
             result = await session.execute(
                 select(ScaledObjectModel).where(
-                    ScaledObjectModel.id == data.scaled_object_id,
-                    # This part is unlikely to match if it's namespace/name,
-                    # but we'll check name/namespace as well
+                    ScaledObjectModel.name == name,
+                    ScaledObjectModel.namespace == ns
                 )
             )
             so = result.scalar_one_or_none()
-            if not so:
-                result = await session.execute(
-                    select(ScaledObjectModel).where(
-                        ScaledObjectModel.name == name,
-                        ScaledObjectModel.namespace == ns
-                    )
-                )
-                so = result.scalar_one_or_none()
         else:
             # Handle UUID format
+            logger.info(f"Searching by UUID: {data.scaled_object_id}")
             result = await session.execute(select(ScaledObjectModel).where(ScaledObjectModel.id == data.scaled_object_id))
             so = result.scalar_one_or_none()
 
         if not so:
-            raise HTTPException(status_code=404, detail="ScaledObject not found")
+            logger.error(f"ScaledObject not found for ID: {data.scaled_object_id}")
+            raise HTTPException(status_code=404, detail=f"ScaledObject not found: {data.scaled_object_id}")
 
-        # Ensure we store the ACTUAL internal ID (UUID) in the cron event
-        # to maintain database integrity and avoid future lookup issues
         so_id_to_store = so.id
         event = CronEventModel(
             scaled_object_id=so_id_to_store, name=data.name, timezone_str=data.timezone_str,
