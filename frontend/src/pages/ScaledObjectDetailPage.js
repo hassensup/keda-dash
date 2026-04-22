@@ -35,11 +35,11 @@ const SCALER_FIELDS = {
     { key: "lagThreshold", label: "Lag Threshold", default: "10" },
   ],
   cpu: [
-    { key: "type", label: "Type", default: "Utilization", options: ["Utilization", "AverageValue"] },
+    { key: "metricType", label: "Type", default: "Utilization", options: ["Utilization", "AverageValue"] },
     { key: "value", label: "Value", default: "60" },
   ],
   memory: [
-    { key: "type", label: "Type", default: "Utilization", options: ["Utilization", "AverageValue"] },
+    { key: "metricType", label: "Type", default: "Utilization", options: ["Utilization", "AverageValue"] },
     { key: "value", label: "Value", default: "60" },
   ],
   redis: [
