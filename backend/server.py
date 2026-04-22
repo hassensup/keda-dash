@@ -473,7 +473,7 @@ async def create_cron_event(data: CronEventCreate, current_user: dict = Depends(
         session.add(event)
         await session.commit()
         await session.refresh(event)
-        return event_to_dict(event, so.name)
+        return event_to_dict(event, so_dict["name"])
 
 
 @api_router.put("/cron-events/{event_id}")
