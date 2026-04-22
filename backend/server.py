@@ -434,32 +434,37 @@ async def list_cron_events(scaled_object_id: Optional[str] = None, month: Option
 @api_router.post("/cron-events")
 async def create_cron_event(data: CronEventCreate, current_user: dict = Depends(get_current_user)):
     async with async_session_maker() as session:
-        # Log the incoming ID for debugging
-        logger.info(f"Creating cron event for ScaledObject ID: {data.scaled_object_id}")
+        # Use the k8s_service to resolve the object, as it handles both UUID and namespace/name formats consistently
+        so_dict = await k8s_service.get_object(data.scaled_object_id)
 
-        so = None
-        if "/" in data.scaled_object_id:
-            # Handle 'namespace/name' format
-            ns, name = data.scaled_object_id.split("/", 1)
-            logger.info(f"Searching by namespace/name: {ns}/{name}")
-            result = await session.execute(
-                select(ScaledObjectModel).where(
-                    ScaledObjectModel.name == name,
-                    ScaledObjectModel.namespace == ns
-                )
-            )
-            so = result.scalar_one_or_none()
-        else:
-            # Handle UUID format
-            logger.info(f"Searching by UUID: {data.scaled_object_id}")
-            result = await session.execute(select(ScaledObjectModel).where(ScaledObjectModel.id == data.scaled_object_id))
-            so = result.scalar_one_or_none()
-
-        if not so:
+        if not so_dict:
             logger.error(f"ScaledObject not found for ID: {data.scaled_object_id}")
             raise HTTPException(status_code=404, detail=f"ScaledObject not found: {data.scaled_object_id}")
 
-        so_id_to_store = so.id
+        # We need the internal database ID (UUID) for the foreign key in CronEventModel
+        # If we are in mock mode, k8s_service.get_object returns the dict with the UUID as 'id'
+        # If we are in real mode, 'id' is 'namespace/name'.
+        # To be safe, we perform a final lookup to get the UUID if we are in mock mode.
+
+        so_id_to_store = so_dict["id"]
+        if k8s_service.get_mode() == "mock":
+            # In mock mode, so_dict["id"] is already the UUID.
+            pass
+        else:
+            # In real mode, we might need the internal DB ID if we are using the DB for cron events.
+            # Since CronEventModel is DB-based, we find the record by name/ns.
+            if "/" in so_id_to_store:
+                ns, name = so_id_to_store.split("/", 1)
+                result = await session.execute(
+                    select(ScaledObjectModel).where(
+                        ScaledObjectModel.name == name,
+                        ScaledObjectModel.namespace == ns
+                    )
+                )
+                db_so = result.scalar_one_or_none()
+                if db_so:
+                    so_id_to_store = db_so.id
+
         event = CronEventModel(
             scaled_object_id=so_id_to_store, name=data.name, timezone_str=data.timezone_str,
             desired_replicas=data.desired_replicas, event_date=data.event_date,
