@@ -22,26 +22,6 @@ backend:
     corsOrigins: "*"
     k8sMode: "in-cluster"
 
-# Frontend Configuration
-frontend:
-  image:
-    repository: keda-dashboard-frontend
-    pullPolicy: IfNotPresent
-    tag: "latest"
-  service:
-    port: 3000
-  env:
-    # This should be the internal K8s DNS name of the backend service
-    # or the public URL if the frontend is client-side rendered
-    REACT_APP_BACKEND_URL: "http://keda-dashboard-backend.keda-dashboard.svc.cluster.local:8001"
-  resources:
-    limits:
-      cpu: 200m
-      memory: 256Mi
-    requests:
-      cpu: 50m
-      memory: 64Mi
-
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
@@ -64,9 +44,6 @@ ingress:
         - path: /api
           serviceName: backend
           port: 8001
-        - path: /
-          serviceName: frontend
-          port: 3000
   tls: []
 
 postgresql:

@@ -14,20 +14,3 @@ spec:
   selector:
     {{- include "keda-dashboard.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: backend
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ include "keda-dashboard.fullname" . }}-frontend
-  labels:
-    {{- include "keda-dashboard.labels" . | nindent 4 }}
-spec:
-  type: {{ .Values.frontend.service.type | default "ClusterIP" }}
-  ports:
-    - port: {{ .Values.frontend.service.port }}
-      targetPort: 3000
-      protocol: TCP
-      name: http
-  selector:
-    {{- include "keda-dashboard.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: frontend

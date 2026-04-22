@@ -36,12 +36,3 @@ RUN echo '#!/bin/bash\ncd /app/backend && uvicorn server:app --host 0.0.0.0 --po
 EXPOSE 8001
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD curl -f http://localhost:8001/api/health || exit 1
 CMD ["/app/start.sh"]
-
-# Stage 3: Separate Frontend image for development/standalone use
-FROM node:20-alpine AS frontend-dev
-WORKDIR /app
-COPY frontend/package.json frontend/yarn.lock* ./
-RUN yarn install
-COPY frontend/ .
-EXPOSE 3000
-CMD ["yarn", "start"]
