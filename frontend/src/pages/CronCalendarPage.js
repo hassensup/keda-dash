@@ -13,7 +13,7 @@ import {
   format, isSameMonth, isSameDay, isToday, parseISO,
 } from "date-fns";
 import { fr } from "date-fns/locale";
-import cronParser from "cron-parser";
+import * as cronParserLib from "cron-parser";
 
 const EMPTY_TRIGGER = {
   type: "cron",
@@ -74,13 +74,19 @@ export default function CronCalendarPage() {
           const cronExpr = trigger.metadata?.start;
           if (!cronExpr) return;
 
-          const interval = cronParser.default ? cronParser.default.parseExpression(cronExpr, {
-            currentDate: new Date(start.getTime() - 1000),
-            tz: trigger.metadata?.timezone || 'UTC',
-          }) : cronParser.parseExpression(cronExpr, {
-            currentDate: new Date(start.getTime() - 1000),
-            tz: trigger.metadata?.timezone || 'UTC',
-          });
+          const parseExpr = cronParserLib.parseExpression ||
+                                (cronParserLib.default && cronParserLib.default.parseExpression) ||
+                                cronParserLib;
+
+          const interval = typeof parseExpr === 'function'
+            ? parseExpr(cronExpr, {
+                currentDate: new Date(start.getTime() - 1000),
+                tz: trigger.metadata?.timezone || 'UTC',
+              })
+            : cronParserLib.parseExpression(cronExpr, {
+                currentDate: new Date(start.getTime() - 1000),
+                tz: trigger.metadata?.timezone || 'UTC',
+              });
           let nextDate = interval.next();
 
           while (nextDate <= end) {
