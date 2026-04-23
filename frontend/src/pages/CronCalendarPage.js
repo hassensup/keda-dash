@@ -75,7 +75,8 @@ export default function CronCalendarPage() {
           if (!cronExpr) return;
 
           const interval = cronParser.parseExpression(cronExpr, {
-            currentDate: start,
+            currentDate: new Date(start.getTime() - 1000),
+            tz: trigger.metadata?.timezone || 'UTC',
           });
           let nextDate = interval.next();
 
