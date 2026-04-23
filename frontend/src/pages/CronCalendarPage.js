@@ -14,6 +14,7 @@ import {
 } from "date-fns";
 import { fr } from "date-fns/locale";
 import cronParser from "cron-parser";
+import { parseExpression } from "cron-parser";
 
 const EMPTY_TRIGGER = {
   type: "cron",
@@ -74,7 +75,7 @@ export default function CronCalendarPage() {
           const cronExpr = trigger.metadata?.start;
           if (!cronExpr) return;
 
-          const interval = cronParser.parseExpression(cronExpr, {
+          const interval = parseExpression(cronExpr, {
             currentDate: new Date(start.getTime() - 1000),
             tz: trigger.metadata?.timezone || 'UTC',
           });
@@ -119,39 +120,44 @@ export default function CronCalendarPage() {
     setDialogOpen(true);
   };
 
-  const handleSave = async () => {
-    if (!editTrigger && !form.metadata?.start) {
-      toast.error("Please specify a cron start expression");
-      return;
-    }
-    setSaving(true);
-    try {
-      const soId = editTrigger ? editTrigger.soId : scaledObjects[0]?.id;
-      if (!soId) {
-        toast.error("No ScaledObject selected");
-        setSaving(false);
-        return;
-      }
+      const handleSave = async () => {
+        if (!editTrigger && !form.metadata?.start) {
+          toast.error("Please specify a cron start expression");
+          return;
+        }
+        setSaving(true);
+        try {
+          const soId = editTrigger ? editTrigger.soId : form.soId;
+          if (!soId) {
+            toast.error("No ScaledObject selected");
+            setSaving(false);
+            return;
+          }
 
-      const so = scaledObjects.find(s => s.id === soId);
-      let triggers = [...so.triggers];
+          const so = scaledObjects.find(s => s.id === soId);
+          if (!so) {
+            toast.error("Selected ScaledObject not found");
+            setSaving(false);
+            return;
+          }
+          let triggers = [...so.triggers];
 
-      if (editTrigger) {
-        triggers[editTrigger.triggerIdx] = form;
-      } else {
-        triggers.push(form);
-      }
+          if (editTrigger) {
+            triggers[editTrigger.triggerIdx] = form;
+          } else {
+            triggers.push(form);
+          }
 
-      await api.put(`/scaled-objects/${soId}`, { triggers });
-      toast.success("Trigger updated");
-      setDialogOpen(false);
-      fetchScaledObjects();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "Save failed");
-    } finally {
-      setSaving(false);
-    }
-  };
+          await api.put(`/scaled-objects/${soId}`, { triggers });
+          toast.success("Trigger updated");
+          setDialogOpen(false);
+          fetchScaledObjects();
+        } catch (err) {
+          toast.error(err.response?.data?.detail || "Save failed");
+        } finally {
+          setSaving(false);
+        }
+      };
 
   const handleDelete = async () => {
     if (!editTrigger) return;
