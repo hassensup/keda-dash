@@ -1,8 +1,7 @@
-from dotenv import load_dotenv
-from pathlib import Path
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+app = FastAPI()
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends
 from fastapi.staticfiles import StaticFiles
@@ -131,7 +130,10 @@ class CronEventUpdate(BaseModel):
 # ============ AUTH UTILITIES ============
 JWT_ALGORITHM = "HS256"
 
+# Add StaticFiles for serving frontend static files
+app.mount("/static", StaticFiles(directory="path_to_static_files"), name="static")
 
+# Function to get JWT secret with default value
 def get_jwt_secret():
     return os.environ["JWT_SECRET"]
 

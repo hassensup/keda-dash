@@ -33,6 +33,7 @@ COPY --from=frontend-build /app/frontend/build ./frontend/build
 # Create a startup script
 RUN echo '#!/bin/bash\ncd /app/backend && uvicorn server:app --host 0.0.0.0 --port 8001' > /app/start.sh && chmod +x /app/start.sh
 
+# Serve backend and frontend
 EXPOSE 8001
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD curl -f http://localhost:8001/api/health || exit 1
 CMD ["/app/start.sh"]
