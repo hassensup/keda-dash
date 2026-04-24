@@ -82,12 +82,31 @@ export default function CronCalendarPage() {
             return field;
           }).join(' ');
 
-          const parseExpr = cronParser.parseExpression ||
-                            (cronParser.default && cronParser.default.parseExpression) ||
-                            cronParser;
+          let parseExpr = null;
 
-          if (typeof parseExpr !== 'function') {
-            console.error("Could not resolve parseExpression function from cron-parser", cronParser);
+          // Aggressive search for parseExpression function
+          if (typeof cronParser.parseExpression === 'function') {
+            parseExpr = cronParser.parseExpression;
+          } else if (cronParser.default && typeof cronParser.default.parseExpression === 'function') {
+            parseExpr = cronParser.default.parseExpression;
+          } else if (typeof cronParser === 'function') {
+            parseExpr = cronParser;
+          } else {
+            // Deep search in keys
+            const keys = Object.keys(cronParser);
+            const foundKey = keys.find(key =>
+              (key === 'parseExpression' && typeof cronParser[key] === 'function') ||
+              (key === 'default' && cronParser[key] && typeof cronParser[key].parseExpression === 'function')
+            );
+            if (foundKey === 'default') {
+              parseExpr = cronParser.default.parseExpression;
+            } else if (foundKey) {
+              parseExpr = cronParser[foundKey];
+            }
+          }
+
+          if (!parseExpr || typeof parseExpr !== 'function') {
+            console.error("FATAL: Could not resolve parseExpression. Available keys:", Object.keys(cronParser));
             return;
           }
 
