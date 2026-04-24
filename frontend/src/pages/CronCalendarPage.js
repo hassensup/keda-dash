@@ -94,13 +94,9 @@ export default function CronCalendarPage() {
                 currentDate: new Date(start.getTime() - 1000),
                 tz: trigger.metadata?.timezone || 'UTC',
               });
-            } else if (cronParser.CronExpressionParser) {
-              // Use the class-based approach found in the keys
-              const parser = new cronParser.CronExpressionParser();
-              const expression = parser.parse(cronExpr);
-
-              // Manually create an interval-like object with a .next() method
-              // since cron-parser's parseExpression is a wrapper around this
+            } else if (cronParser.CronExpression) {
+              // Based on the keys, CronExpression is the class that handles the expression
+              const expression = new cronParser.CronExpression(cronExpr);
               const cronDate = new cronParser.CronDate();
               cronDate.setTz(trigger.metadata?.timezone || 'UTC');
               cronDate.setStartDate(new Date(start.getTime() - 1000));
