@@ -71,8 +71,16 @@ export default function CronCalendarPage() {
         if (trigger.type !== "cron") return;
 
         try {
-          const cronExpr = trigger.metadata?.start;
-          if (!cronExpr) return;
+          const rawCronExpr = trigger.metadata?.start;
+          if (!rawCronExpr) return;
+
+          // Sanitize cron expression: remove leading zeros from first two fields to avoid parsing issues
+          const cronExpr = rawCronExpr.split(' ').map((field, index) => {
+            if ((index === 0 || index === 1) && field.length > 1 && field.startsWith('0')) {
+              return parseInt(field, 10).toString();
+            }
+            return field;
+          }).join(' ');
 
           const interval = cron.parseExpression(cronExpr, {
                 currentDate: new Date(start.getTime() - 1000),
