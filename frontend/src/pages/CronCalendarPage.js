@@ -84,7 +84,6 @@ export default function CronCalendarPage() {
 
           let interval;
           try {
-            // 1. Robust Sanitization: remove leading zeros from first two fields (minutes and hours)
             const rawCronExpr = trigger.metadata?.start;
             if (!rawCronExpr) return;
 
@@ -95,7 +94,6 @@ export default function CronCalendarPage() {
               return field;
             }).join(' ');
 
-            // 2. Versatile Resolution of the Parser
             if (cronParser.parseExpression) {
               interval = cronParser.parseExpression(cronExpr, {
                 currentDate: new Date(start.getTime() - 1000),
@@ -107,17 +105,13 @@ export default function CronCalendarPage() {
                 tz: trigger.metadata?.timezone || 'UTC',
               });
             } else if (cronParser.CronExpression) {
-              // Create CronDate for timezone/start-date handling
               const cronDate = new cronParser.CronDate();
               const tz = trigger.metadata?.timezone || 'UTC';
-
-              // Handle timezone setting safely
               if (typeof cronDate.setTz === 'function') {
                 cronDate.setTz(tz);
               } else if (cronDate.timezone !== undefined) {
                 cronDate.timezone = tz;
               }
-
               const startDate = new Date(start.getTime() - 1000);
               if (typeof cronDate.setStartDate === 'function') {
                 cronDate.setStartDate(startDate);
@@ -125,9 +119,7 @@ export default function CronCalendarPage() {
                 cronDate.startDate = startDate;
               }
 
-              // Pass CronDate as the second argument to satisfy the constructor's internal 'tz' check
-              const expression = new cronParser.CronExpression(cronExpr, cronDate);
-
+              const expression = new cronParser.CronExpression(cronExpr);
               interval = {
                 next: () => expression.getNextDate(cronDate)
               };
