@@ -98,8 +98,17 @@ export default function CronCalendarPage() {
               // Based on the keys, CronExpression is the class that handles the expression
               const expression = new cronParser.CronExpression(cronExpr);
               const cronDate = new cronParser.CronDate();
-              cronDate.setTz(trigger.metadata?.timezone || 'UTC');
-              cronDate.setStartDate(new Date(start.getTime() - 1000));
+              if (cronDate.setTz) {
+                cronDate.setTz(trigger.metadata?.timezone || 'UTC');
+              } else if (cronDate.timezone) {
+                cronDate.timezone = trigger.metadata?.timezone || 'UTC';
+              }
+
+              if (cronDate.setStartDate) {
+                cronDate.setStartDate(new Date(start.getTime() - 1000));
+              } else {
+                cronDate.startDate = new Date(start.getTime() - 1000);
+              }
 
               interval = {
                 next: () => expression.getNextDate(cronDate)
