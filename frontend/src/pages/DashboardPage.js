@@ -1,251 +1,259 @@
-import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import api from "@/lib/api";
 import { toast } from "sonner";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Search, Pencil, Trash2, Activity, Clock, Database, MessageSquare, Cpu, BarChart3, HardDrive } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, RefreshCw } from "lucide-react";
+import {
+  startOfMonth, endOfMonth, startOfWeek, endOfWeek,
+  addDays, addMonths, subMonths,
+  format, isSameMonth, isToday,
+} from "date-fns";
+import { fr } from "date-fns/locale";
+import parser from "cron-parser"; // ✅ FIXED IMPORT
 
-const SCALER_ICONS = {
-  cron: Clock,
-  prometheus: BarChart3,
-  rabbitmq: MessageSquare,
-  kafka: MessageSquare,
-  cpu: Cpu,
-  memory: HardDrive,
-  redis: Database,
-  postgresql: Database,
-  mysql: Database,
+const EMPTY_TRIGGER = {
+  type: "cron",
+  metadata: {
+    timezone: "UTC",
+    start: "0 8 * * 1-5",
+    end: "0 20 * * 1-5",
+    desiredReplicas: "10"
+  }
 };
 
-const STATUS_STYLES = {
-  Active: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  Paused: "bg-amber-50 text-amber-700 border-amber-200",
-  Error: "bg-red-50 text-red-700 border-red-200",
-};
+// ✅ normalize cron (fix leading zeros + weird formats)
+function normalizeCron(expr) {
+  if (!expr) return expr;
+  return expr
+    .trim()
+    .replace(/\b0+(\d)/g, "$1"); // "00 07" -> "0 7"
+}
 
-export default function DashboardPage() {
-  const [objects, setObjects] = useState([]);
-  const [namespaces, setNamespaces] = useState([]);
-  const [filterNs, setFilterNs] = useState("all");
-  const [filterType, setFilterType] = useState("all");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [deleteId, setDeleteId] = useState(null);
-  const navigate = useNavigate();
+export default function CronCalendarPage() {
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [scaledObjects, setScaledObjects] = useState([]);
+  const [filterSoId, setFilterSoId] = useState("all");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editTrigger, setEditTrigger] = useState(null);
+  const [form, setForm] = useState({ ...EMPTY_TRIGGER });
+  const [saving, setSaving] = useState(false);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  const fetchScaledObjects = useCallback(async () => {
     try {
-      const params = {};
-      if (filterNs && filterNs !== "all") params.namespace = filterNs;
-      if (filterType && filterType !== "all") params.scaler_type = filterType;
-      const [objRes, nsRes] = await Promise.all([
-        api.get("/scaled-objects", { params }),
-        api.get("/namespaces"),
-      ]);
-      setObjects(objRes.data);
-      setNamespaces(nsRes.data);
+      const res = await api.get("/scaled-objects");
+      setScaledObjects(res.data || []);
     } catch {
-      toast.error("Failed to load data");
-    } finally {
-      setLoading(false);
+      toast.error("Failed to load ScaledObjects");
     }
-  }, [filterNs, filterType]);
+  }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { fetchScaledObjects(); }, [fetchScaledObjects]);
 
-  const handleDelete = async () => {
-    if (!deleteId) return;
+  const calendarDays = useMemo(() => {
+    const start = startOfWeek(startOfMonth(currentMonth), { weekStartsOn: 1 });
+    const end = endOfWeek(endOfMonth(currentMonth), { weekStartsOn: 1 });
+
+    const days = [];
+    let day = start;
+    while (day <= end) {
+      days.push(day);
+      day = addDays(day, 1);
+    }
+    return days;
+  }, [currentMonth]);
+
+  const projectedEvents = useMemo(() => {
+    const map = {};
+    const start = startOfMonth(currentMonth);
+    const end = endOfMonth(currentMonth);
+
+    scaledObjects.forEach((so) => {
+      if (filterSoId !== "all" && so.id !== filterSoId) return;
+
+      (so.triggers || []).forEach((trigger, triggerIdx) => {
+        if (trigger.type !== "cron") return;
+
+        const cronExprRaw = trigger.metadata?.start;
+        if (!cronExprRaw) return;
+
+        const cronExpr = normalizeCron(cronExprRaw);
+
+        try {
+          const interval = parser.parseExpression(cronExpr, {
+            currentDate: new Date(start.getTime() - 1000),
+            tz: trigger.metadata?.timezone || "UTC",
+          });
+
+          while (true) {
+            let nextDate;
+
+            try {
+              nextDate = interval.next().toDate();
+            } catch {
+              break; // no more occurrences
+            }
+
+            if (nextDate > end) break;
+
+            const dateStr = format(nextDate, "yyyy-MM-dd");
+
+            if (!map[dateStr]) map[dateStr] = [];
+
+            map[dateStr].push({
+              id: `so-${so.id}-tr-${triggerIdx}`,
+              soId: so.id,
+              soName: so.name,
+              triggerIdx,
+              trigger,
+              time: format(nextDate, "HH:mm"),
+              date: dateStr
+            });
+          }
+
+        } catch (e) {
+          console.error(`Invalid cron for ${so.name}:`, cronExpr, e);
+        }
+      });
+    });
+
+    return map;
+  }, [scaledObjects, currentMonth, filterSoId]);
+
+  const handleSave = async () => {
+    if (!editTrigger && !form.metadata?.start) {
+      toast.error("Cron start required");
+      return;
+    }
+
+    setSaving(true);
+
     try {
-      await api.delete(`/scaled-objects/${deleteId}`);
-      toast.success("ScaledObject deleted");
-      setDeleteId(null);
-      fetchData();
-    } catch {
-      toast.error("Failed to delete");
+      const soId = editTrigger ? editTrigger.soId : form.soId;
+      if (!soId) throw new Error("No ScaledObject selected");
+
+      const so = scaledObjects.find(s => s.id === soId);
+      if (!so) throw new Error("ScaledObject not found");
+
+      let triggers = [...(so.triggers || [])];
+
+      if (editTrigger) {
+        triggers[editTrigger.triggerIdx] = form;
+      } else {
+        triggers.push(form);
+      }
+
+      await api.put(`/scaled-objects/${soId}`, { triggers });
+
+      toast.success("Saved");
+      setDialogOpen(false);
+      fetchScaledObjects();
+
+    } catch (err) {
+      toast.error(err.message || "Save failed");
+    } finally {
+      setSaving(false);
     }
   };
 
-  const filtered = objects.filter((o) =>
-    o.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    o.target_deployment.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const handleDelete = async () => {
+    if (!editTrigger) return;
 
-  const scalerTypes = [...new Set(objects.map((o) => o.scaler_type))];
-  const stats = {
-    total: objects.length,
-    active: objects.filter((o) => o.status === "Active").length,
-    paused: objects.filter((o) => o.status === "Paused").length,
+    try {
+      const so = scaledObjects.find(s => s.id === editTrigger.soId);
+      let triggers = [...(so.triggers || [])];
+
+      triggers.splice(editTrigger.triggerIdx, 1);
+
+      await api.put(`/scaled-objects/${editTrigger.soId}`, { triggers });
+
+      toast.success("Deleted");
+      setDialogOpen(false);
+      fetchScaledObjects();
+
+    } catch {
+      toast.error("Delete failed");
+    }
   };
 
   return (
-    <div className="p-6 space-y-6 animate-fade-in" data-testid="dashboard-page">
+    <div className="p-6 space-y-6">
+      
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 tracking-tight">Scaled Objects</h1>
-          <p className="text-sm text-slate-500 mt-1">Manage KEDA autoscaling configurations</p>
-        </div>
-        <Button
-          onClick={() => navigate("/scaled-objects/new")}
-          data-testid="create-scaled-object-btn"
-          className="bg-slate-900 hover:bg-slate-800 text-white transition-all duration-150 hover:-translate-y-[1px]"
-        >
-          <Plus className="w-4 h-4 mr-2" /> New ScaledObject
+      <div className="flex justify-between">
+        <h1 className="text-2xl font-semibold">Cron Calendar</h1>
+
+        <Button onClick={fetchScaledObjects}>
+          <RefreshCw className="w-4 h-4" />
         </Button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
-        <StatCard label="Total" value={stats.total} icon={Activity} />
-        <StatCard label="Active" value={stats.active} icon={Activity} color="text-emerald-600" />
-        <StatCard label="Paused" value={stats.paused} icon={Clock} color="text-amber-600" />
+      {/* Month Nav */}
+      <div className="flex justify-between">
+        <Button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
+          <ChevronLeft />
+        </Button>
+
+        <h2>{format(currentMonth, "MMMM yyyy", { locale: fr })}</h2>
+
+        <Button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
+          <ChevronRight />
+        </Button>
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input
-            placeholder="Search by name or deployment..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            data-testid="search-input"
-            className="pl-9 h-9"
-          />
-        </div>
-        <Select value={filterNs} onValueChange={setFilterNs}>
-          <SelectTrigger className="w-44 h-9" data-testid="namespace-filter">
-            <SelectValue placeholder="Namespace" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Namespaces</SelectItem>
-            {namespaces.map((ns) => (
-              <SelectItem key={ns} value={ns}>{ns}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={filterType} onValueChange={setFilterType}>
-          <SelectTrigger className="w-44 h-9" data-testid="type-filter">
-            <SelectValue placeholder="Scaler Type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            {scalerTypes.map((t) => (
-              <SelectItem key={t} value={t}>{t}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      {/* Calendar */}
+      <div className="grid grid-cols-7 gap-2">
+        {calendarDays.map((day) => {
+          const dateStr = format(day, "yyyy-MM-dd");
+          const events = projectedEvents[dateStr] || [];
+
+          return (
+            <div key={dateStr} className="border p-2 text-xs">
+              <div>{format(day, "d")}</div>
+
+              {events.map(ev => (
+                <div key={ev.id}>
+                  {ev.time} {ev.soName}
+                </div>
+              ))}
+            </div>
+          );
+        })}
       </div>
 
-      {/* Table */}
-      <div className="bg-white border border-slate-200 rounded-md shadow-sm">
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="text-xs font-semibold uppercase tracking-[0.05em] text-slate-500">Name</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-[0.05em] text-slate-500">Namespace</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-[0.05em] text-slate-500">Scaler</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-[0.05em] text-slate-500">Target</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-[0.05em] text-slate-500">Replicas</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-[0.05em] text-slate-500">Status</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-[0.05em] text-slate-500 text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-12 text-slate-400">Loading...</TableCell></TableRow>
-            ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-12 text-slate-400">No ScaledObjects found</TableCell></TableRow>
-            ) : (
-              filtered.map((obj) => {
-                const Icon = SCALER_ICONS[obj.scaler_type] || Activity;
-                return (
-                  <TableRow key={obj.id} data-testid={`so-row-${obj.id}`} className="group">
-                    <TableCell className="font-medium text-slate-900">
-                      <span className="font-mono text-sm">{obj.name}</span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="font-mono text-xs">{obj.namespace}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1.5">
-                        <Icon className="w-3.5 h-3.5 text-slate-400" />
-                        <span className="text-sm text-slate-600">{obj.scaler_type}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-slate-600">{obj.target_deployment}</TableCell>
-                    <TableCell>
-                      <span className="font-mono text-xs text-slate-600">{obj.min_replicas} / {obj.max_replicas}</span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={`text-xs ${STATUS_STYLES[obj.status] || ""}`}>
-                        {obj.status === "Active" && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 pulse-dot inline-block" />}
-                        {obj.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => navigate(`/scaled-objects/${obj.id}`)}
-                          data-testid={`edit-so-${obj.id}`}
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => setDeleteId(obj.id)}
-                          data-testid={`delete-so-${obj.id}`}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* Delete Dialog */}
-      <Dialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+      {/* Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete ScaledObject</DialogTitle>
-            <DialogDescription>This action cannot be undone. The ScaledObject and all associated cron events will be permanently removed.</DialogDescription>
+            <DialogTitle>{editTrigger ? "Edit" : "Create"} Trigger</DialogTitle>
+            <DialogDescription />
           </DialogHeader>
+
+          <Input
+            value={form.metadata?.start || ""}
+            onChange={(e) =>
+              setForm(p => ({
+                ...p,
+                metadata: { ...p.metadata, start: e.target.value }
+              }))
+            }
+          />
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteId(null)} data-testid="cancel-delete-btn">Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} data-testid="confirm-delete-btn">Delete</Button>
+            {editTrigger && (
+              <Button onClick={handleDelete}>
+                <Trash2 /> Delete
+              </Button>
+            )}
+            <Button onClick={handleSave} disabled={saving}>
+              Save
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function StatCard({ label, value, icon: Icon, color = "text-slate-600" }) {
-  return (
-    <div className="bg-white border border-slate-200 rounded-md p-4 flex items-center gap-3">
-      <div className={`w-9 h-9 rounded-md bg-slate-50 flex items-center justify-center ${color}`}>
-        <Icon className="w-4 h-4" />
-      </div>
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">{label}</p>
-        <p className="text-xl font-semibold text-slate-900">{value}</p>
-      </div>
     </div>
   );
 }
