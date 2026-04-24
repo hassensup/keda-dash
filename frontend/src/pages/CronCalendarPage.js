@@ -95,8 +95,10 @@ export default function CronCalendarPage() {
                 tz: trigger.metadata?.timezone || 'UTC',
               });
             } else if (cronParser.CronExpression) {
-              // Based on the keys, CronExpression is the class that handles the expression
-              const expression = new cronParser.CronExpression(cronExpr);
+              // The error "Cannot read properties of undefined (reading 'tz')" at new a (CronExpression.js:37:28)
+              // strongly suggests that the CronExpression constructor expects the timezone/date object
+              // as a second argument, not just the expression.
+
               const cronDate = new cronParser.CronDate();
               if (cronDate.setTz) {
                 cronDate.setTz(trigger.metadata?.timezone || 'UTC');
@@ -109,6 +111,9 @@ export default function CronCalendarPage() {
               } else {
                 cronDate.startDate = new Date(start.getTime() - 1000);
               }
+
+              // Pass cronDate as the second argument to the constructor
+              const expression = new cronParser.CronExpression(cronExpr, cronDate);
 
               interval = {
                 next: () => expression.getNextDate(cronDate)
