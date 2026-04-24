@@ -82,38 +82,39 @@ export default function CronCalendarPage() {
             return field;
           }).join(' ');
 
-          let parseExpr = null;
-
-          // Aggressive search for parseExpression function
-          if (typeof cronParser.parseExpression === 'function') {
-            parseExpr = cronParser.parseExpression;
-          } else if (cronParser.default && typeof cronParser.default.parseExpression === 'function') {
-            parseExpr = cronParser.default.parseExpression;
-          } else if (typeof cronParser === 'function') {
-            parseExpr = cronParser;
-          } else {
-            // Deep search in keys
-            const keys = Object.keys(cronParser);
-            const foundKey = keys.find(key =>
-              (key === 'parseExpression' && typeof cronParser[key] === 'function') ||
-              (key === 'default' && cronParser[key] && typeof cronParser[key].parseExpression === 'function')
-            );
-            if (foundKey === 'default') {
-              parseExpr = cronParser.default.parseExpression;
-            } else if (foundKey) {
-              parseExpr = cronParser[foundKey];
-            }
-          }
-
-          if (!parseExpr || typeof parseExpr !== 'function') {
-            console.error("FATAL: Could not resolve parseExpression. Available keys:", Object.keys(cronParser));
-            return;
-          }
-
-          const interval = parseExpr(cronExpr, {
+          let interval;
+          try {
+            if (cronParser.parseExpression) {
+              interval = cronParser.parseExpression(cronExpr, {
                 currentDate: new Date(start.getTime() - 1000),
                 tz: trigger.metadata?.timezone || 'UTC',
               });
+            } else if (cronParser.default && cronParser.default.parseExpression) {
+              interval = cronParser.default.parseExpression(cronExpr, {
+                currentDate: new Date(start.getTime() - 1000),
+                tz: trigger.metadata?.timezone || 'UTC',
+              });
+            } else if (cronParser.CronExpressionParser) {
+              // Use the class-based approach found in the keys
+              const parser = new cronParser.CronExpressionParser();
+              const expression = parser.parse(cronExpr);
+
+              // Manually create an interval-like object with a .next() method
+              // since cron-parser's parseExpression is a wrapper around this
+              const cronDate = new cronParser.CronDate();
+              cronDate.setTz(trigger.metadata?.timezone || 'UTC');
+              cronDate.setStartDate(new Date(start.getTime() - 1000));
+
+              interval = {
+                next: () => expression.getNextDate(cronDate)
+              };
+            } else {
+              throw new Error("No viable parsing method found in cron-parser");
+            }
+          } catch (parseErr) {
+            console.error(`Parsing failed for ${so.name} with expr ${cronExpr}:`, parseErr);
+            return;
+          }
           let nextDate = interval.next();
 
           while (nextDate <= end) {
