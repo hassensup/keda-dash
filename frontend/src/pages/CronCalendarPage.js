@@ -84,6 +84,18 @@ export default function CronCalendarPage() {
 
           let interval;
           try {
+            // 1. Robust Sanitization: remove leading zeros from first two fields (minutes and hours)
+            const rawCronExpr = trigger.metadata?.start;
+            if (!rawCronExpr) return;
+
+            const cronExpr = rawCronExpr.split(' ').map((field, index) => {
+              if ((index === 0 || index === 1) && field.length > 1 && field.startsWith('0')) {
+                return parseInt(field, 10).toString();
+              }
+              return field;
+            }).join(' ');
+
+            // 2. Versatile Resolution of the Parser
             if (cronParser.parseExpression) {
               interval = cronParser.parseExpression(cronExpr, {
                 currentDate: new Date(start.getTime() - 1000),
@@ -95,24 +107,25 @@ export default function CronCalendarPage() {
                 tz: trigger.metadata?.timezone || 'UTC',
               });
             } else if (cronParser.CronExpression) {
-              // The error "Cannot read properties of undefined (reading 'tz')" at new a (CronExpression.js:37:28)
-              // strongly suggests that the CronExpression constructor expects the timezone/date object
-              // as a second argument, not just the expression.
-
+              // Create CronDate for timezone/start-date handling
               const cronDate = new cronParser.CronDate();
-              if (cronDate.setTz) {
-                cronDate.setTz(trigger.metadata?.timezone || 'UTC');
-              } else if (cronDate.timezone) {
-                cronDate.timezone = trigger.metadata?.timezone || 'UTC';
+              const tz = trigger.metadata?.timezone || 'UTC';
+
+              // Handle timezone setting safely
+              if (typeof cronDate.setTz === 'function') {
+                cronDate.setTz(tz);
+              } else if (cronDate.timezone !== undefined) {
+                cronDate.timezone = tz;
               }
 
-              if (cronDate.setStartDate) {
-                cronDate.setStartDate(new Date(start.getTime() - 1000));
-              } else {
-                cronDate.startDate = new Date(start.getTime() - 1000);
+              const startDate = new Date(start.getTime() - 1000);
+              if (typeof cronDate.setStartDate === 'function') {
+                cronDate.setStartDate(startDate);
+              } else if (cronDate.startDate !== undefined) {
+                cronDate.startDate = startDate;
               }
 
-              // Pass cronDate as the second argument to the constructor
+              // Pass CronDate as the second argument to satisfy the constructor's internal 'tz' check
               const expression = new cronParser.CronExpression(cronExpr, cronDate);
 
               interval = {
@@ -122,7 +135,7 @@ export default function CronCalendarPage() {
               throw new Error("No viable parsing method found in cron-parser");
             }
           } catch (parseErr) {
-            console.error(`Parsing failed for ${so.name} with expr ${cronExpr}:`, parseErr);
+            console.error(`Parsing failed for ${so.name} with expr ${trigger.metadata?.start}:`, parseErr);
             return;
           }
           let nextDate = interval.next();
