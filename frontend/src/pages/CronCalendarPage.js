@@ -76,14 +76,14 @@ export default function CronCalendarPage() {
 
           const parseExpr = cronParserLib.parseExpression ||
                                 (cronParserLib.default && cronParserLib.default.parseExpression) ||
-                                cronParserLib;
+                                (cronParserLib.parseExpression ? cronParserLib.parseExpression : null);
 
-          const interval = typeof parseExpr === 'function'
-            ? parseExpr(cronExpr, {
-                currentDate: new Date(start.getTime() - 1000),
-                tz: trigger.metadata?.timezone || 'UTC',
-              })
-            : cronParserLib.parseExpression(cronExpr, {
+          if (!parseExpr) {
+            console.error("cron-parser parseExpression not found in library", cronParserLib);
+            return;
+          }
+
+          const interval = parseExpr(cronExpr, {
                 currentDate: new Date(start.getTime() - 1000),
                 tz: trigger.metadata?.timezone || 'UTC',
               });
@@ -291,7 +291,7 @@ export default function CronCalendarPage() {
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">ScaledObject</Label>
               <Select
-                value={editTrigger ? editTrigger.soId : (scaledObjects[0]?.id || "")}
+                value={editTrigger ? editTrigger.soId : (form.soId || scaledObjects[0]?.id || "")}
                 onValueChange={(v) => {
                   if (!editTrigger) {
                     setForm(p => ({ ...p, soId: v }));
