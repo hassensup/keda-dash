@@ -106,7 +106,10 @@ class MockK8sService(K8sScaledObjectService):
         async with self._session_maker() as session:
             scaling_behavior_json = None
             if data.get("scaling_behavior"):
+                logger.info(f"MockK8s: Saving scaling_behavior: {json.dumps(data['scaling_behavior'], indent=2)}")
                 scaling_behavior_json = json.dumps(data["scaling_behavior"])
+            else:
+                logger.info("MockK8s: No scaling_behavior provided")
             
             obj = self._ScaledObjectModel(
                 name=data["name"], namespace=data.get("namespace", "default"),
@@ -119,7 +122,9 @@ class MockK8sService(K8sScaledObjectService):
             session.add(obj)
             await session.commit()
             await session.refresh(obj)
-            return self._to_dict(obj)
+            result = self._to_dict(obj)
+            logger.info(f"MockK8s: Created object with scaling_behavior: {result.get('scaling_behavior')}")
+            return result
 
     async def update_object(self, obj_id: str, data: dict) -> dict:
         async with self._session_maker() as session:

@@ -401,7 +401,9 @@ async def list_scaled_objects(namespace: Optional[str] = None, scaler_type: Opti
 @api_router.post("/scaled-objects")
 async def create_scaled_object(data: ScaledObjectCreate, current_user: dict = Depends(get_current_user)):
     try:
-        result = await k8s_service.create_object(data.model_dump())
+        data_dict = data.model_dump()
+        logger.info(f"Creating ScaledObject with data: {json.dumps(data_dict, indent=2)}")
+        result = await k8s_service.create_object(data_dict)
         return result
     except Exception as e:
         logger.error(f"Failed to create ScaledObject: {e}")
@@ -419,10 +421,12 @@ async def get_scaled_object(obj_id: str, current_user: dict = Depends(get_curren
 @api_router.put("/scaled-objects/{obj_id:path}")
 async def update_scaled_object(obj_id: str, data: ScaledObjectUpdate, current_user: dict = Depends(get_current_user)):
     update_data = data.model_dump(exclude_unset=True)
+    logger.info(f"Updating ScaledObject {obj_id} with data: {json.dumps(update_data, indent=2)}")
     try:
         result = await k8s_service.update_object(obj_id, update_data)
         if not result:
             raise HTTPException(status_code=404, detail="ScaledObject not found")
+        logger.info(f"Updated ScaledObject result: {json.dumps(result, indent=2)}")
         return result
     except HTTPException:
         raise
