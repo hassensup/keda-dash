@@ -352,7 +352,15 @@ async def lifespan(app):
 
 
 # ============ APP SETUP ============
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    title="KEDA Dashboard API",
+    description="API for managing KEDA ScaledObjects with advanced scaling behavior configuration",
+    version="0.2.0",
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
+)
 api_router = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -360,7 +368,7 @@ logger = logging.getLogger(__name__)
 
 
 # ============ AUTH ROUTES ============
-@api_router.post("/auth/login")
+@api_router.post("/auth/login", tags=["Authentication"])
 async def login(req: LoginRequest, response: Response):
     async with async_session_maker() as session:
         result = await session.execute(select(UserModel).where(UserModel.email == req.email.lower()))
@@ -372,7 +380,7 @@ async def login(req: LoginRequest, response: Response):
         return {"id": user.id, "email": user.email, "name": user.name, "role": user.role, "token": token}
 
 
-@api_router.get("/auth/me")
+@api_router.get("/auth/me", tags=["Authentication"])
 async def get_me(current_user: dict = Depends(get_current_user)):
     async with async_session_maker() as session:
         result = await session.execute(select(UserModel).where(UserModel.id == current_user["id"]))
@@ -382,14 +390,14 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         return {"id": user.id, "email": user.email, "name": user.name, "role": user.role}
 
 
-@api_router.post("/auth/logout")
+@api_router.post("/auth/logout", tags=["Authentication"])
 async def logout(response: Response):
     response.delete_cookie("access_token", path="/")
     return {"message": "Logged out"}
 
 
 # ============ SCALED OBJECT ROUTES (via K8s Service) ============
-@api_router.get("/scaled-objects")
+@api_router.get("/scaled-objects", tags=["ScaledObjects"])
 async def list_scaled_objects(namespace: Optional[str] = None, scaler_type: Optional[str] = None, current_user: dict = Depends(get_current_user)):
     try:
         return await k8s_service.list_objects(namespace=namespace, scaler_type=scaler_type)
@@ -398,7 +406,7 @@ async def list_scaled_objects(namespace: Optional[str] = None, scaler_type: Opti
         raise HTTPException(status_code=500, detail=f"Failed to list ScaledObjects: {str(e)}")
 
 
-@api_router.post("/scaled-objects")
+@api_router.post("/scaled-objects", tags=["ScaledObjects"])
 async def create_scaled_object(data: ScaledObjectCreate, current_user: dict = Depends(get_current_user)):
     try:
         result = await k8s_service.create_object(data.model_dump())
@@ -408,7 +416,7 @@ async def create_scaled_object(data: ScaledObjectCreate, current_user: dict = De
         raise HTTPException(status_code=500, detail=f"Failed to create ScaledObject: {str(e)}")
 
 
-@api_router.get("/scaled-objects/{obj_id:path}")
+@api_router.get("/scaled-objects/{obj_id:path}", tags=["ScaledObjects"])
 async def get_scaled_object(obj_id: str, current_user: dict = Depends(get_current_user)):
     result = await k8s_service.get_object(obj_id)
     if not result:
@@ -416,7 +424,7 @@ async def get_scaled_object(obj_id: str, current_user: dict = Depends(get_curren
     return result
 
 
-@api_router.put("/scaled-objects/{obj_id:path}")
+@api_router.put("/scaled-objects/{obj_id:path}", tags=["ScaledObjects"])
 async def update_scaled_object(obj_id: str, data: ScaledObjectUpdate, current_user: dict = Depends(get_current_user)):
     update_data = data.model_dump(exclude_unset=True)
     try:
@@ -436,7 +444,7 @@ async def update_scaled_object(obj_id: str, data: ScaledObjectUpdate, current_us
         raise HTTPException(status_code=500, detail=f"Failed to update ScaledObject: {str(e)}")
 
 
-@api_router.delete("/scaled-objects/{obj_id:path}")
+@api_router.delete("/scaled-objects/{obj_id:path}", tags=["ScaledObjects"])
 async def delete_scaled_object(obj_id: str, current_user: dict = Depends(get_current_user)):
     try:
         result = await k8s_service.delete_object(obj_id)
@@ -451,7 +459,7 @@ async def delete_scaled_object(obj_id: str, current_user: dict = Depends(get_cur
 
 
 # ============ CRON EVENT ROUTES ============
-@api_router.get("/cron-events")
+@api_router.get("/cron-events", tags=["Cron Events"])
 async def list_cron_events(scaled_object_id: Optional[str] = None, month: Optional[str] = None, current_user: dict = Depends(get_current_user)):
     async with async_session_maker() as session:
         query = select(CronEventModel)
@@ -470,7 +478,7 @@ async def list_cron_events(scaled_object_id: Optional[str] = None, month: Option
         return [event_to_dict(e, so_names.get(e.scaled_object_id, "Unknown")) for e in events]
 
 
-@api_router.post("/cron-events")
+@api_router.post("/cron-events", tags=["Cron Events"])
 async def create_cron_event(data: CronEventCreate, current_user: dict = Depends(get_current_user)):
     async with async_session_maker() as session:
         # Use the k8s_service to resolve the object, as it handles both UUID and namespace/name formats consistently
@@ -524,7 +532,7 @@ async def create_cron_event(data: CronEventCreate, current_user: dict = Depends(
         return event_to_dict(event, so_dict["name"])
 
 
-@api_router.put("/cron-events/{event_id}")
+@api_router.put("/cron-events/{event_id}", tags=["Cron Events"])
 async def update_cron_event(event_id: str, data: CronEventUpdate, current_user: dict = Depends(get_current_user)):
     async with async_session_maker() as session:
         result = await session.execute(select(CronEventModel).where(CronEventModel.id == event_id))
@@ -542,7 +550,7 @@ async def update_cron_event(event_id: str, data: CronEventUpdate, current_user: 
         return event_to_dict(event, so.name if so else "Unknown")
 
 
-@api_router.delete("/cron-events/{event_id}")
+@api_router.delete("/cron-events/{event_id}", tags=["Cron Events"])
 async def delete_cron_event(event_id: str, current_user: dict = Depends(get_current_user)):
     async with async_session_maker() as session:
         result = await session.execute(select(CronEventModel).where(CronEventModel.id == event_id))
@@ -555,7 +563,7 @@ async def delete_cron_event(event_id: str, current_user: dict = Depends(get_curr
 
 
 # ============ NAMESPACE ROUTES (via K8s Service) ============
-@api_router.get("/namespaces")
+@api_router.get("/namespaces", tags=["Kubernetes"])
 async def list_namespaces(current_user: dict = Depends(get_current_user)):
     try:
         return await k8s_service.list_namespaces()
@@ -565,7 +573,7 @@ async def list_namespaces(current_user: dict = Depends(get_current_user)):
 
 
 # ============ SCALER TYPES (via K8s Service) ============
-@api_router.get("/scaler-types")
+@api_router.get("/scaler-types", tags=["Kubernetes"])
 async def list_scaler_types(current_user: dict = Depends(get_current_user)):
     try:
         return await k8s_service.list_scaler_types()
@@ -575,7 +583,7 @@ async def list_scaler_types(current_user: dict = Depends(get_current_user)):
 
 
 # ============ DEPLOYMENTS (via K8s Service) ============
-@api_router.get("/deployments")
+@api_router.get("/deployments", tags=["Kubernetes"])
 async def list_deployments(namespace: Optional[str] = None, current_user: dict = Depends(get_current_user)):
     try:
         return await k8s_service.list_deployments(namespace=namespace)
@@ -585,7 +593,7 @@ async def list_deployments(namespace: Optional[str] = None, current_user: dict =
 
 
 # ============ K8S STATUS ============
-@api_router.get("/k8s-status")
+@api_router.get("/k8s-status", tags=["Kubernetes"])
 async def get_k8s_status(current_user: dict = Depends(get_current_user)):
     return {
         "mode": k8s_service.get_mode() if k8s_service else "unknown",
@@ -595,7 +603,7 @@ async def get_k8s_status(current_user: dict = Depends(get_current_user)):
 
 
 # ============ HEALTH ============
-@api_router.get("/health")
+@api_router.get("/health", tags=["Health"])
 async def health():
     return {"status": "ok"}
 
