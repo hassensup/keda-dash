@@ -12,7 +12,7 @@ import {
   format, isSameMonth, isToday,
 } from "date-fns";
 import { fr } from "date-fns/locale";
-import * as cronParser from "cron-parser";
+import { parseExpression } from "cron-parser";
 
 const EMPTY_TRIGGER = {
   type: "cron",
@@ -60,14 +60,6 @@ export default function CronCalendarPage() {
     const map = {};
     const start = startOfMonth(currentMonth);
     const end = endOfMonth(currentMonth);
-
-    // Get the parseExpression function from cron-parser
-    const parseExpression = cronParser.parseExpression || cronParser.default?.parseExpression;
-
-    if (!parseExpression) {
-      console.error("cron-parser parseExpression not available");
-      return map;
-    }
 
     scaledObjects.forEach((so) => {
       if (filterSoId !== "all" && so.id !== filterSoId) return;
