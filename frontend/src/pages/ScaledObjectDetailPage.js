@@ -79,20 +79,32 @@ export default function ScaledObjectDetailPage() {
   });
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchNamespaces = async () => {
       try {
-        const [nsRes, depRes] = await Promise.all([
-          api.get("/namespaces"),
-          api.get("/deployments"),
-        ]);
+        const nsRes = await api.get("/namespaces");
         setNamespaces(nsRes.data);
-        setDeployments(depRes.data);
       } catch (err) {
-        console.error("Failed to fetch namespaces/deployments:", err);
+        console.error("Failed to fetch namespaces:", err);
       }
     };
-    fetchData();
+    fetchNamespaces();
   }, []);
+
+  useEffect(() => {
+    const fetchDeployments = async () => {
+      try {
+        const params = form.namespace ? { namespace: form.namespace } : {};
+        const depRes = await api.get("/deployments", { params });
+        setDeployments(depRes.data);
+      } catch (err) {
+        console.error("Failed to fetch deployments:", err);
+        setDeployments([]);
+      }
+    };
+    if (form.namespace) {
+      fetchDeployments();
+    }
+  }, [form.namespace]);
 
   useEffect(() => {
     if (!isNew) {
@@ -107,7 +119,16 @@ export default function ScaledObjectDetailPage() {
     }
   }, [id, isNew, navigate]);
 
-  const updateField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+  const updateField = (key, value) => {
+    setForm((prev) => {
+      const updated = { ...prev, [key]: value };
+      // Si on change le namespace, réinitialiser le target_deployment
+      if (key === "namespace" && value !== prev.namespace) {
+        updated.target_deployment = "";
+      }
+      return updated;
+    });
+  };
 
   const updateTriggerField = (idx, key, value, isMeta = true) => {
     setForm((prev) => {
@@ -229,13 +250,20 @@ export default function ScaledObjectDetailPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Target Deployment</Label>
-                <Select value={form.target_deployment} onValueChange={(v) => updateField("target_deployment", v)}>
+                <Select 
+                  value={form.target_deployment} 
+                  onValueChange={(v) => updateField("target_deployment", v)}
+                  disabled={!form.namespace}
+                >
                   <SelectTrigger data-testid="field-target" className="h-9 font-mono text-sm">
-                    <SelectValue placeholder="Select deployment" />
+                    <SelectValue placeholder={!form.namespace ? "Select namespace first" : "Select deployment"} />
                   </SelectTrigger>
                   <SelectContent>
                     {deployments.length === 0 && form.target_deployment && (
                       <SelectItem value={form.target_deployment}>{form.target_deployment}</SelectItem>
+                    )}
+                    {deployments.length === 0 && !form.target_deployment && (
+                      <div className="px-2 py-1.5 text-xs text-slate-400">No deployments found</div>
                     )}
                     {deployments.map((dep) => (
                       <SelectItem key={dep} value={dep}>{dep}</SelectItem>
