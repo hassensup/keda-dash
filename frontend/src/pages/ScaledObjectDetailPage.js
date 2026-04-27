@@ -254,23 +254,32 @@ export default function ScaledObjectDetailPage() {
                 <Select 
                   value={form.target_deployment} 
                   onValueChange={(v) => updateField("target_deployment", v)}
-                  disabled={!form.namespace}
                 >
                   <SelectTrigger data-testid="field-target" className="h-9 font-mono text-sm">
-                    <SelectValue placeholder={!form.namespace ? "Select namespace first" : "Select deployment"} />
+                    <SelectValue placeholder="Select or type deployment" />
                   </SelectTrigger>
                   <SelectContent>
-                    {deployments.length === 0 && form.target_deployment && (
-                      <SelectItem value={form.target_deployment}>{form.target_deployment}</SelectItem>
+                    {deployments.length === 0 && (
+                      <div className="px-2 py-1.5 text-xs text-slate-400 text-center">
+                        {!form.namespace ? "Select a namespace first" : "No deployments found in this namespace"}
+                      </div>
                     )}
-                    {deployments.length === 0 && !form.target_deployment && (
-                      <div className="px-2 py-1.5 text-xs text-slate-400">No deployments found</div>
+                    {form.target_deployment && !deployments.includes(form.target_deployment) && (
+                      <SelectItem value={form.target_deployment}>{form.target_deployment}</SelectItem>
                     )}
                     {deployments.map((dep) => (
                       <SelectItem key={dep} value={dep}>{dep}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-slate-400 mt-1">Or type manually below:</p>
+                <Input
+                  value={form.target_deployment || ""}
+                  onChange={(e) => updateField("target_deployment", e.target.value)}
+                  placeholder="Enter deployment name"
+                  className="h-9 font-mono text-sm"
+                  data-testid="field-target-input"
+                />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Scaler Types</Label>
