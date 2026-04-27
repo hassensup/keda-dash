@@ -71,6 +71,7 @@ export default function ScaledObjectDetailPage() {
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [namespaces, setNamespaces] = useState([]);
+  const [deployments, setDeployments] = useState([]);
   const [selectedTriggerType, setSelectedTriggerType] = useState("cron");
   const [form, setForm] = useState({
     name: "", namespace: "default", scaler_type: "cron",
@@ -91,6 +92,22 @@ export default function ScaledObjectDetailPage() {
   }, []);
 
   useEffect(() => {
+    const fetchDeployments = async () => {
+      try {
+        const params = form.namespace ? { namespace: form.namespace } : {};
+        const depRes = await api.get("/deployments", { params });
+        setDeployments(depRes.data);
+      } catch (err) {
+        console.error("Failed to fetch deployments:", err);
+        setDeployments([]);
+      }
+    };
+    if (form.namespace) {
+      fetchDeployments();
+    }
+  }, [form.namespace]);
+
+  useEffect(() => {
     if (!isNew) {
       api.get(`/scaled-objects/${id}`)
         .then(({ data }) => {
@@ -103,7 +120,16 @@ export default function ScaledObjectDetailPage() {
     }
   }, [id, isNew, navigate]);
 
-  const updateField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+  const updateField = (key, value) => {
+    setForm((prev) => {
+      const updated = { ...prev, [key]: value };
+      // Si on change le namespace, réinitialiser le target_deployment
+      if (key === "namespace" && value !== prev.namespace) {
+        updated.target_deployment = "";
+      }
+      return updated;
+    });
+  };
 
   const updateTriggerField = (idx, key, value, isMeta = true) => {
     setForm((prev) => {
@@ -223,7 +249,30 @@ export default function ScaledObjectDetailPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <FormField label="Target Deployment" value={form.target_deployment} onChange={(v) => updateField("target_deployment", v)} testId="field-target" mono />
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Target Deployment</Label>
+                <Select 
+                  value={form.target_deployment} 
+                  onValueChange={(v) => updateField("target_deployment", v)}
+                >
+                  <SelectTrigger data-testid="field-target" className="h-9 font-mono text-sm">
+                    <SelectValue placeholder="Select deployment" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {deployments.length === 0 && (
+                      <div className="px-2 py-1.5 text-xs text-slate-400 text-center">
+                        {!form.namespace ? "Select a namespace first" : "No deployments found"}
+                      </div>
+                    )}
+                    {form.target_deployment && !deployments.includes(form.target_deployment) && (
+                      <SelectItem value={form.target_deployment}>{form.target_deployment}</SelectItem>
+                    )}
+                    {deployments.map((dep) => (
+                      <SelectItem key={dep} value={dep}>{dep}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Scaler Types</Label>
                 <div className="flex flex-wrap gap-2 min-h-[36px] items-center border border-slate-200 rounded-md px-3 py-2 bg-slate-50">
