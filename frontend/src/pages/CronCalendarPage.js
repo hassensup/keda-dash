@@ -4,13 +4,12 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { ChevronLeft, ChevronRight, Plus, Clock, Pencil, Trash2, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, RefreshCw } from "lucide-react";
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths,
-  format, isSameMonth, isSameDay, isToday, parseISO,
+  format, isSameMonth, isToday,
 } from "date-fns";
 import { fr } from "date-fns/locale";
 import * as cronParser from "cron-parser";
@@ -33,8 +32,6 @@ export default function CronCalendarPage() {
   const [editTrigger, setEditTrigger] = useState(null);
   const [form, setForm] = useState({ ...EMPTY_TRIGGER });
   const [saving, setSaving] = useState(false);
-
-  const monthStr = format(currentMonth, "yyyy-MM");
 
   const fetchScaledObjects = useCallback(async () => {
     try {
@@ -64,72 +61,37 @@ export default function CronCalendarPage() {
     const start = startOfMonth(currentMonth);
     const end = endOfMonth(currentMonth);
 
+    // Get the parseExpression function from cron-parser
+    const parseExpression = cronParser.parseExpression || cronParser.default?.parseExpression;
+
+    if (!parseExpression) {
+      console.error("cron-parser parseExpression not available");
+      return map;
+    }
+
     scaledObjects.forEach((so) => {
       if (filterSoId !== "all" && so.id !== filterSoId) return;
 
       so.triggers.forEach((trigger, triggerIdx) => {
         if (trigger.type !== "cron") return;
 
-        try {
-          const rawCronExpr = trigger.metadata?.start;
-          if (!rawCronExpr) return;
+        const rawCronExpr = trigger.metadata?.start;
+        if (!rawCronExpr) return;
 
-          // Sanitize cron expression: remove leading zeros from first two fields to avoid parsing issues
-          const cronExpr = rawCronExpr.split(' ').map((field, index) => {
-            if ((index === 0 || index === 1) && field.length > 1 && field.startsWith('0')) {
-              return parseInt(field, 10).toString();
-            }
-            return field;
-          }).join(' ');
-
-          let interval;
-          try {
-            const rawCronExpr = trigger.metadata?.start;
-            if (!rawCronExpr) return;
-
-            const cronExpr = rawCronExpr.split(' ').map((field, index) => {
-              if ((index === 0 || index === 1) && field.length > 1 && field.startsWith('0')) {
-                return parseInt(field, 10).toString();
-              }
-              return field;
-            }).join(' ');
-
-            if (cronParser.parseExpression) {
-              interval = cronParser.parseExpression(cronExpr, {
-                currentDate: new Date(start.getTime() - 1000),
-                tz: trigger.metadata?.timezone || 'UTC',
-              });
-            } else if (cronParser.default && cronParser.default.parseExpression) {
-              interval = cronParser.default.parseExpression(cronExpr, {
-                currentDate: new Date(start.getTime() - 1000),
-                tz: trigger.metadata?.timezone || 'UTC',
-              });
-            } else if (cronParser.CronExpression) {
-              const cronDate = new cronParser.CronDate();
-              const tz = trigger.metadata?.timezone || 'UTC';
-              if (typeof cronDate.setTz === 'function') {
-                cronDate.setTz(tz);
-              } else if (cronDate.timezone !== undefined) {
-                cronDate.timezone = tz;
-              }
-              const startDate = new Date(start.getTime() - 1000);
-              if (typeof cronDate.setStartDate === 'function') {
-                cronDate.setStartDate(startDate);
-              } else if (cronDate.startDate !== undefined) {
-                cronDate.startDate = startDate;
-              }
-
-              const expression = new cronParser.CronExpression(cronExpr);
-              interval = {
-                next: () => expression.getNextDate(cronDate)
-              };
-            } else {
-              throw new Error("No viable parsing method found in cron-parser");
-            }
-          } catch (parseErr) {
-            console.error(`Parsing failed for ${so.name} with expr ${trigger.metadata?.start}:`, parseErr);
-            return;
+        // Sanitize cron expression: remove leading zeros from first two fields to avoid parsing issues
+        const cronExpr = rawCronExpr.split(' ').map((field, index) => {
+          if ((index === 0 || index === 1) && field.length > 1 && field.startsWith('0')) {
+            return parseInt(field, 10).toString();
           }
+          return field;
+        }).join(' ');
+
+        try {
+          const interval = parseExpression(cronExpr, {
+            currentDate: new Date(start.getTime() - 1000),
+            tz: trigger.metadata?.timezone || 'UTC',
+          });
+
           let nextDate = interval.next();
 
           while (nextDate <= end) {
