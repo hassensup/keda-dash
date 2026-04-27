@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { ChevronLeft, ChevronRight, Trash2, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Trash2, RefreshCw, Filter } from "lucide-react";
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, addMonths, subMonths,
   format, isSameMonth, isToday,
@@ -32,6 +32,7 @@ export default function CronCalendarPage() {
   const [editTrigger, setEditTrigger] = useState(null);
   const [form, setForm] = useState({ ...EMPTY_TRIGGER });
   const [saving, setSaving] = useState(false);
+  const [hideRecurring, setHideRecurring] = useState(false);
 
   const fetchScaledObjects = useCallback(async () => {
     try {
@@ -61,6 +62,36 @@ export default function CronCalendarPage() {
     const start = startOfMonth(currentMonth);
     const end = endOfMonth(currentMonth);
 
+    // Helper function to detect recurring patterns
+    const isRecurringPattern = (cronExpr) => {
+      const parts = cronExpr.trim().split(/\s+/);
+      if (parts.length < 5) return false;
+      
+      const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+      
+      // Daily patterns: * * * * * or specific time every day
+      if (dayOfMonth === '*' && month === '*' && dayOfWeek === '*') {
+        return true;
+      }
+      
+      // Every weekend: Saturday and Sunday (0,6 or 6,0 or 0,7 or 6,7)
+      if (dayOfMonth === '*' && month === '*' && 
+          (dayOfWeek === '0,6' || dayOfWeek === '6,0' || 
+           dayOfWeek === '0,7' || dayOfWeek === '6,7' ||
+           dayOfWeek === '6-7' || dayOfWeek === '0-1' ||
+           dayOfWeek === '6-0' || dayOfWeek === '7')) {
+        return true;
+      }
+      
+      // Every specific day of week (e.g., every Sunday: 0 or 7)
+      if (dayOfMonth === '*' && month === '*' && 
+          /^[0-7]$/.test(dayOfWeek)) {
+        return true;
+      }
+      
+      return false;
+    };
+
     scaledObjects.forEach((so) => {
       if (filterSoId !== "all" && so.id !== filterSoId) return;
 
@@ -77,6 +108,11 @@ export default function CronCalendarPage() {
           }
           return field;
         }).join(' ');
+
+        // Skip recurring patterns if filter is enabled
+        if (hideRecurring && isRecurringPattern(cronExpr)) {
+          return;
+        }
 
         try {
           const interval = CronExpressionParser.parse(cronExpr, {
@@ -107,7 +143,7 @@ export default function CronCalendarPage() {
       });
     });
     return map;
-  }, [scaledObjects, currentMonth, filterSoId]);
+  }, [scaledObjects, currentMonth, filterSoId, hideRecurring]);
 
   const openAddDialog = (date) => {
     const dateStr = format(date, "yyyy-MM-dd");
@@ -192,9 +228,28 @@ export default function CronCalendarPage() {
             <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 tracking-tight">Cron Calendar</h1>
             <p className="text-sm text-slate-500 mt-1">Visualize and manage KEDA cron triggers</p>
           </div>
-          <Button variant="outline" size="sm" onClick={fetchScaledObjects} className="h-8 w-8 p-0" data-testid="calendar-refresh-btn">
-            <RefreshCw className="w-4 h-4" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={fetchScaledObjects} 
+              className="h-8 w-8 p-0" 
+              data-testid="calendar-refresh-btn"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </Button>
+            <Button 
+              variant={hideRecurring ? "default" : "outline"}
+              size="sm" 
+              onClick={() => setHideRecurring(!hideRecurring)} 
+              className="h-8 px-3" 
+              data-testid="calendar-filter-recurring-btn"
+              title={hideRecurring ? "Show recurring events" : "Hide recurring events"}
+            >
+              <Filter className="w-4 h-4 mr-1.5" />
+              {hideRecurring ? "Show All" : "Hide Recurring"}
+            </Button>
+          </div>
         </div>
         <Select value={filterSoId} onValueChange={setFilterSoId}>
           <SelectTrigger className="w-56 h-9" data-testid="calendar-so-filter">
