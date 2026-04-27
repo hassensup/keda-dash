@@ -12,7 +12,7 @@ import {
   format, isSameMonth, isToday,
 } from "date-fns";
 import { fr } from "date-fns/locale";
-import { parseExpression } from "cron-parser";
+import cronParser from "cron-parser";
 
 const EMPTY_TRIGGER = {
   type: "cron",
@@ -79,12 +79,12 @@ export default function CronCalendarPage() {
         }).join(' ');
 
         try {
-          const interval = parseExpression(cronExpr, {
+          const interval = cronParser.parseExpression(cronExpr, {
             currentDate: new Date(start.getTime() - 1000),
             tz: trigger.metadata?.timezone || 'UTC',
           });
 
-          let nextDate = interval.next();
+          let nextDate = interval.next().toDate();
 
           while (nextDate <= end) {
             const dateStr = format(nextDate, "yyyy-MM-dd");
@@ -99,7 +99,7 @@ export default function CronCalendarPage() {
               time: format(nextDate, "HH:mm"),
               date: dateStr
             });
-            nextDate = interval.next();
+            nextDate = interval.next().toDate();
           }
         } catch (e) {
           console.error(`Invalid cron expression for ${so.name}: ${trigger.metadata?.start}`, e);
