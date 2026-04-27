@@ -251,11 +251,21 @@ export default function ScaledObjectDetailPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Préparer les données à envoyer
+      const dataToSend = { ...form };
+      
+      // Nettoyer le scaling_behavior si les deux sont null
+      if (dataToSend.scaling_behavior) {
+        if (!dataToSend.scaling_behavior.scale_up && !dataToSend.scaling_behavior.scale_down) {
+          dataToSend.scaling_behavior = null;
+        }
+      }
+      
       if (isNew) {
-        await api.post("/scaled-objects", form);
+        await api.post("/scaled-objects", dataToSend);
         toast.success("ScaledObject created");
       } else {
-        const { id: _id, ...updateData } = form;
+        const { id: _id, ...updateData } = dataToSend;
         await api.put(`/scaled-objects/${id}`, updateData);
         toast.success("ScaledObject updated");
       }

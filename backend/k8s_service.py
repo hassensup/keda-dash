@@ -321,6 +321,51 @@ class RealK8sService(K8sScaledObjectService):
                 spec["pollingInterval"] = data["polling_interval"]
             if "triggers" in data:
                 spec["triggers"] = data["triggers"]
+            
+            # Handle scaling behavior
+            if "scaling_behavior" in data:
+                scaling_behavior = data["scaling_behavior"]
+                if scaling_behavior:
+                    behavior = {}
+                    
+                    if scaling_behavior.get("scale_up"):
+                        scale_up = scaling_behavior["scale_up"]
+                        behavior["scaleUp"] = {
+                            "stabilizationWindowSeconds": scale_up.get("stabilization_window_seconds", 300),
+                            "selectPolicy": scale_up.get("select_policy", "Max"),
+                            "policies": [
+                                {
+                                    "type": p.get("type", "Percent"),
+                                    "value": p.get("value", 100),
+                                    "periodSeconds": p.get("period_seconds", 15)
+                                }
+                                for p in scale_up.get("policies", [])
+                            ]
+                        }
+                    
+                    if scaling_behavior.get("scale_down"):
+                        scale_down = scaling_behavior["scale_down"]
+                        behavior["scaleDown"] = {
+                            "stabilizationWindowSeconds": scale_down.get("stabilization_window_seconds", 300),
+                            "selectPolicy": scale_down.get("select_policy", "Max"),
+                            "policies": [
+                                {
+                                    "type": p.get("type", "Percent"),
+                                    "value": p.get("value", 100),
+                                    "periodSeconds": p.get("period_seconds", 15)
+                                }
+                                for p in scale_down.get("policies", [])
+                            ]
+                        }
+                    
+                    if behavior:
+                        spec["behavior"] = behavior
+                    else:
+                        # Remove behavior if both scale_up and scale_down are null
+                        spec.pop("behavior", None)
+                else:
+                    # Remove behavior if scaling_behavior is null
+                    spec.pop("behavior", None)
 
             existing["spec"] = spec
 
@@ -430,6 +475,24 @@ class RealK8sService(K8sScaledObjectService):
         ns = metadata.get("namespace", "default")
         name = metadata.get("name", "")
 
+        # Extract scaling behavior if present
+        scaling_behavior = None
+        behavior = spec.get("behavior")
+        if behavior:
+            scaling_behavior = {}
+            if "scaleUp" in behavior:
+                scaling_behavior["scale_up"] = {
+                    "stabilization_window_seconds": behavior["scaleUp"].get("stabilizationWindowSeconds", 300),
+                    "select_policy": behavior["scaleUp"].get("selectPolicy", "Max"),
+                    "policies": behavior["scaleUp"].get("policies", [])
+                }
+            if "scaleDown" in behavior:
+                scaling_behavior["scale_down"] = {
+                    "stabilization_window_seconds": behavior["scaleDown"].get("stabilizationWindowSeconds", 300),
+                    "select_policy": behavior["scaleDown"].get("selectPolicy", "Max"),
+                    "policies": behavior["scaleDown"].get("policies", [])
+                }
+
         return {
             "id": f"{ns}/{name}",
             "name": name,
@@ -441,6 +504,7 @@ class RealK8sService(K8sScaledObjectService):
             "cooldown_period": spec.get("cooldownPeriod", 300),
             "polling_interval": spec.get("pollingInterval", 30),
             "triggers": triggers,
+            "scaling_behavior": scaling_behavior,
             "status": obj_status,
             "created_at": metadata.get("creationTimestamp", ""),
             "updated_at": metadata.get("creationTimestamp", ""),
@@ -449,6 +513,55 @@ class RealK8sService(K8sScaledObjectService):
     @staticmethod
     def _dict_to_crd(data: dict) -> dict:
         """Convert our API dict to K8s CRD format for create."""
+        spec = {
+            "scaleTargetRef": {
+                "name": data["target_deployment"],
+            },
+            "minReplicaCount": data.get("min_replicas", 0),
+            "maxReplicaCount": data.get("max_replicas", 10),
+            "cooldownPeriod": data.get("cooldown_period", 300),
+            "pollingInterval": data.get("polling_interval", 30),
+            "triggers": data.get("triggers", []),
+        }
+        
+        # Add scaling behavior if present
+        scaling_behavior = data.get("scaling_behavior")
+        if scaling_behavior:
+            behavior = {}
+            
+            if scaling_behavior.get("scale_up"):
+                scale_up = scaling_behavior["scale_up"]
+                behavior["scaleUp"] = {
+                    "stabilizationWindowSeconds": scale_up.get("stabilization_window_seconds", 300),
+                    "selectPolicy": scale_up.get("select_policy", "Max"),
+                    "policies": [
+                        {
+                            "type": p.get("type", "Percent"),
+                            "value": p.get("value", 100),
+                            "periodSeconds": p.get("period_seconds", 15)
+                        }
+                        for p in scale_up.get("policies", [])
+                    ]
+                }
+            
+            if scaling_behavior.get("scale_down"):
+                scale_down = scaling_behavior["scale_down"]
+                behavior["scaleDown"] = {
+                    "stabilizationWindowSeconds": scale_down.get("stabilization_window_seconds", 300),
+                    "selectPolicy": scale_down.get("select_policy", "Max"),
+                    "policies": [
+                        {
+                            "type": p.get("type", "Percent"),
+                            "value": p.get("value", 100),
+                            "periodSeconds": p.get("period_seconds", 15)
+                        }
+                        for p in scale_down.get("policies", [])
+                    ]
+                }
+            
+            if behavior:
+                spec["behavior"] = behavior
+        
         return {
             "apiVersion": f"{KEDA_GROUP}/{KEDA_VERSION}",
             "kind": "ScaledObject",
@@ -456,16 +569,7 @@ class RealK8sService(K8sScaledObjectService):
                 "name": data["name"],
                 "namespace": data.get("namespace", "default"),
             },
-            "spec": {
-                "scaleTargetRef": {
-                    "name": data["target_deployment"],
-                },
-                "minReplicaCount": data.get("min_replicas", 0),
-                "maxReplicaCount": data.get("max_replicas", 10),
-                "cooldownPeriod": data.get("cooldown_period", 300),
-                "pollingInterval": data.get("polling_interval", 30),
-                "triggers": data.get("triggers", []),
-            },
+            "spec": spec,
         }
 
 
