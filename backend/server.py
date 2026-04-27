@@ -401,9 +401,7 @@ async def list_scaled_objects(namespace: Optional[str] = None, scaler_type: Opti
 @api_router.post("/scaled-objects")
 async def create_scaled_object(data: ScaledObjectCreate, current_user: dict = Depends(get_current_user)):
     try:
-        data_dict = data.model_dump()
-        logger.info(f"Creating ScaledObject with data: {json.dumps(data_dict, indent=2)}")
-        result = await k8s_service.create_object(data_dict)
+        result = await k8s_service.create_object(data.model_dump())
         return result
     except Exception as e:
         logger.error(f"Failed to create ScaledObject: {e}")
@@ -420,28 +418,17 @@ async def get_scaled_object(obj_id: str, current_user: dict = Depends(get_curren
 
 @api_router.put("/scaled-objects/{obj_id:path}")
 async def update_scaled_object(obj_id: str, data: ScaledObjectUpdate, current_user: dict = Depends(get_current_user)):
-    # First, let's see what Pydantic gives us
-    update_data_unset = data.model_dump(exclude_unset=True)
-    update_data_all = data.model_dump(exclude_unset=False)
-    
-    logger.info(f"Pydantic model_dump(exclude_unset=True): {json.dumps(update_data_unset, indent=2)}")
-    logger.info(f"Pydantic model_dump(exclude_unset=False): {json.dumps(update_data_all, indent=2)}")
-    
-    # Use the one that includes all fields
-    update_data = update_data_all
-    
-    logger.info(f"Updating ScaledObject {obj_id} with data: {json.dumps(update_data, indent=2)}")
-    logger.info(f"Keys in update_data: {list(update_data.keys())}")
-    logger.info(f"'scaling_behavior' in update_data: {'scaling_behavior' in update_data}")
-    if 'scaling_behavior' in update_data:
-        logger.info(f"scaling_behavior value: {update_data['scaling_behavior']}")
-    
+    update_data = data.model_dump(exclude_unset=True)
     try:
         result = await k8s_service.update_object(obj_id, update_data)
         if not result:
             raise HTTPException(status_code=404, detail="ScaledObject not found")
-        logger.info(f"Updated ScaledObject result: {json.dumps(result, indent=2)}")
         return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update ScaledObject: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update ScaledObject: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:

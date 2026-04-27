@@ -261,20 +261,16 @@ export default function ScaledObjectDetailPage() {
         }
       }
       
-      console.log("Saving ScaledObject with data:", JSON.stringify(dataToSend, null, 2));
-      
       if (isNew) {
         await api.post("/scaled-objects", dataToSend);
         toast.success("ScaledObject created");
       } else {
         const { id: _id, ...updateData } = dataToSend;
-        console.log("Update data:", JSON.stringify(updateData, null, 2));
         await api.put(`/scaled-objects/${id}`, updateData);
         toast.success("ScaledObject updated");
       }
       navigate("/");
     } catch (err) {
-      console.error("Save error:", err);
       toast.error(err.response?.data?.detail || "Save failed");
     } finally {
       setSaving(false);
