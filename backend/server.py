@@ -420,8 +420,22 @@ async def get_scaled_object(obj_id: str, current_user: dict = Depends(get_curren
 
 @api_router.put("/scaled-objects/{obj_id:path}")
 async def update_scaled_object(obj_id: str, data: ScaledObjectUpdate, current_user: dict = Depends(get_current_user)):
-    update_data = data.model_dump(exclude_unset=True)
+    # First, let's see what Pydantic gives us
+    update_data_unset = data.model_dump(exclude_unset=True)
+    update_data_all = data.model_dump(exclude_unset=False)
+    
+    logger.info(f"Pydantic model_dump(exclude_unset=True): {json.dumps(update_data_unset, indent=2)}")
+    logger.info(f"Pydantic model_dump(exclude_unset=False): {json.dumps(update_data_all, indent=2)}")
+    
+    # Use the one that includes all fields
+    update_data = update_data_all
+    
     logger.info(f"Updating ScaledObject {obj_id} with data: {json.dumps(update_data, indent=2)}")
+    logger.info(f"Keys in update_data: {list(update_data.keys())}")
+    logger.info(f"'scaling_behavior' in update_data: {'scaling_behavior' in update_data}")
+    if 'scaling_behavior' in update_data:
+        logger.info(f"scaling_behavior value: {update_data['scaling_behavior']}")
+    
     try:
         result = await k8s_service.update_object(obj_id, update_data)
         if not result:

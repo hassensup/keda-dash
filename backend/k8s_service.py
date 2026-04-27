@@ -328,6 +328,8 @@ class RealK8sService(K8sScaledObjectService):
                 spec["triggers"] = data["triggers"]
             
             # Handle scaling behavior
+            logger.info(f"RealK8s update: Checking scaling_behavior in data. Keys in data: {list(data.keys())}")
+            logger.info(f"RealK8s update: 'scaling_behavior' in data = {'scaling_behavior' in data}")
             if "scaling_behavior" in data:
                 scaling_behavior = data["scaling_behavior"]
                 logger.info(f"RealK8s update: scaling_behavior received = {scaling_behavior}")
