@@ -155,9 +155,19 @@ export default function ScaledObjectDetailPage() {
             {isNew ? "New ScaledObject" : form.name}
           </h1>
           {!isNew && (
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
               <Badge variant="outline" className="font-mono text-xs">{form.namespace}</Badge>
-              <Badge variant="outline" className="text-xs">{form.scaler_type}</Badge>
+              {form.triggers.length > 0 ? (
+                // Show all unique scaler types from triggers
+                [...new Set(form.triggers.map(t => t.type))].map((type, idx) => (
+                  <Badge key={idx} variant="outline" className="text-xs capitalize">
+                    {type}
+                  </Badge>
+                ))
+              ) : (
+                // Fallback to scaler_type if no triggers
+                <Badge variant="outline" className="text-xs capitalize">{form.scaler_type}</Badge>
+              )}
             </div>
           )}
         </div>
