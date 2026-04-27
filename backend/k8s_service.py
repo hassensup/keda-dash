@@ -332,10 +332,20 @@ class RealK8sService(K8sScaledObjectService):
             if "scaling_behavior" in data:
                 scaling_behavior = data["scaling_behavior"]
                 logger.info(f"[DEBUG K8s] scaling_behavior value: {scaling_behavior}")
+                logger.info(f"[DEBUG K8s] scaling_behavior type: {type(scaling_behavior)}")
+                logger.info(f"[DEBUG K8s] scaling_behavior is truthy: {bool(scaling_behavior)}")
+                
                 if scaling_behavior:
+                    logger.info("[DEBUG K8s] Inside scaling_behavior truthy block")
                     behavior = {}
                     
-                    if scaling_behavior.get("scale_up"):
+                    scale_up_value = scaling_behavior.get("scale_up")
+                    logger.info(f"[DEBUG K8s] scale_up_value: {scale_up_value}")
+                    logger.info(f"[DEBUG K8s] scale_up_value type: {type(scale_up_value)}")
+                    logger.info(f"[DEBUG K8s] scale_up_value is truthy: {bool(scale_up_value)}")
+                    
+                    if scale_up_value:
+                        logger.info("[DEBUG K8s] Inside scale_up block - creating scaleUp")
                         scale_up = scaling_behavior["scale_up"]
                         behavior["scaleUp"] = {
                             "stabilizationWindowSeconds": scale_up.get("stabilization_window_seconds", 300),
@@ -350,8 +360,15 @@ class RealK8sService(K8sScaledObjectService):
                             ]
                         }
                         logger.info(f"[DEBUG K8s] Created scaleUp: {behavior['scaleUp']}")
+                    else:
+                        logger.info("[DEBUG K8s] scale_up_value is falsy - skipping scaleUp")
                     
-                    if scaling_behavior.get("scale_down"):
+                    scale_down_value = scaling_behavior.get("scale_down")
+                    logger.info(f"[DEBUG K8s] scale_down_value: {scale_down_value}")
+                    logger.info(f"[DEBUG K8s] scale_down_value type: {type(scale_down_value)}")
+                    logger.info(f"[DEBUG K8s] scale_down_value is truthy: {bool(scale_down_value)}")
+                    
+                    if scale_down_value:
                         scale_down = scaling_behavior["scale_down"]
                         behavior["scaleDown"] = {
                             "stabilizationWindowSeconds": scale_down.get("stabilization_window_seconds", 300),
@@ -366,6 +383,11 @@ class RealK8sService(K8sScaledObjectService):
                             ]
                         }
                         logger.info(f"[DEBUG K8s] Created scaleDown: {behavior['scaleDown']}")
+                    else:
+                        logger.info("[DEBUG K8s] scale_down_value is falsy - skipping scaleDown")
+                    
+                    logger.info(f"[DEBUG K8s] behavior dict after processing: {behavior}")
+                    logger.info(f"[DEBUG K8s] behavior is truthy: {bool(behavior)}")
                     
                     if behavior:
                         spec["behavior"] = behavior
@@ -373,16 +395,19 @@ class RealK8sService(K8sScaledObjectService):
                     else:
                         # Remove behavior if both scale_up and scale_down are null
                         spec.pop("behavior", None)
-                        logger.info("[DEBUG K8s] Removed behavior (both null)")
+                        logger.info("[DEBUG K8s] Removed behavior (both null - behavior dict is empty)")
                 else:
                     # Remove behavior if scaling_behavior is null
                     spec.pop("behavior", None)
-                    logger.info("[DEBUG K8s] Removed behavior (scaling_behavior is null)")
+                    logger.info("[DEBUG K8s] Removed behavior (scaling_behavior is falsy)")
             else:
                 logger.warning("[DEBUG K8s] scaling_behavior NOT in data - will not update behavior!")
 
             existing["spec"] = spec
             logger.info(f"[DEBUG K8s] Final spec has 'behavior': {'behavior' in spec}")
+            if 'behavior' in spec:
+                logger.info(f"[DEBUG K8s] Final spec['behavior']: {spec['behavior']}")
+            logger.info(f"[DEBUG K8s] About to send update to Kubernetes API")
 
             # Handle name/namespace change via delete + recreate
             new_name = data.get("name", name)
@@ -401,12 +426,15 @@ class RealK8sService(K8sScaledObjectService):
                     namespace=new_ns, plural=KEDA_PLURAL, body=existing
                 )
             else:
-                return self._custom_api.replace_namespaced_custom_object(
+                result = self._custom_api.replace_namespaced_custom_object(
                     group=KEDA_GROUP, version=KEDA_VERSION,
                     namespace=ns, plural=KEDA_PLURAL, name=name, body=existing
                 )
+                logger.info(f"[DEBUG K8s] Kubernetes API update completed successfully")
+                return result
 
         result = await asyncio.to_thread(_update)
+        logger.info(f"[DEBUG K8s] _update thread completed, converting result back to dict")
         return self._crd_to_dict(result)
 
     async def delete_object(self, obj_id: str) -> dict:
