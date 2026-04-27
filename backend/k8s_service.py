@@ -330,6 +330,7 @@ class RealK8sService(K8sScaledObjectService):
             # Handle scaling behavior
             if "scaling_behavior" in data:
                 scaling_behavior = data["scaling_behavior"]
+                logger.info(f"RealK8s update: scaling_behavior received = {scaling_behavior}")
                 if scaling_behavior:
                     behavior = {}
                     
@@ -347,6 +348,7 @@ class RealK8sService(K8sScaledObjectService):
                                 for p in scale_up.get("policies", [])
                             ]
                         }
+                        logger.info(f"RealK8s update: Created scaleUp = {behavior['scaleUp']}")
                     
                     if scaling_behavior.get("scale_down"):
                         scale_down = scaling_behavior["scale_down"]
@@ -362,17 +364,22 @@ class RealK8sService(K8sScaledObjectService):
                                 for p in scale_down.get("policies", [])
                             ]
                         }
+                        logger.info(f"RealK8s update: Created scaleDown = {behavior['scaleDown']}")
                     
                     if behavior:
                         spec["behavior"] = behavior
+                        logger.info(f"RealK8s update: Setting spec.behavior = {behavior}")
                     else:
                         # Remove behavior if both scale_up and scale_down are null
                         spec.pop("behavior", None)
+                        logger.info("RealK8s update: Removing behavior (both null)")
                 else:
                     # Remove behavior if scaling_behavior is null
                     spec.pop("behavior", None)
+                    logger.info("RealK8s update: Removing behavior (scaling_behavior is null)")
 
             existing["spec"] = spec
+            logger.info(f"RealK8s update: Final spec = {json.dumps(spec, indent=2)}")
 
             # Handle name/namespace change via delete + recreate
             new_name = data.get("name", name)
@@ -483,6 +490,7 @@ class RealK8sService(K8sScaledObjectService):
         # Extract scaling behavior if present
         scaling_behavior = None
         behavior = spec.get("behavior")
+        logger.info(f"RealK8s _crd_to_dict: behavior from spec = {behavior}")
         if behavior:
             scaling_behavior = {}
             if "scaleUp" in behavior:
@@ -491,14 +499,18 @@ class RealK8sService(K8sScaledObjectService):
                     "select_policy": behavior["scaleUp"].get("selectPolicy", "Max"),
                     "policies": behavior["scaleUp"].get("policies", [])
                 }
+                logger.info(f"RealK8s: Extracted scale_up = {scaling_behavior['scale_up']}")
             if "scaleDown" in behavior:
                 scaling_behavior["scale_down"] = {
                     "stabilization_window_seconds": behavior["scaleDown"].get("stabilizationWindowSeconds", 300),
                     "select_policy": behavior["scaleDown"].get("selectPolicy", "Max"),
                     "policies": behavior["scaleDown"].get("policies", [])
                 }
+                logger.info(f"RealK8s: Extracted scale_down = {scaling_behavior['scale_down']}")
+        else:
+            logger.info("RealK8s: No behavior found in spec")
 
-        return {
+        result = {
             "id": f"{ns}/{name}",
             "name": name,
             "namespace": ns,
@@ -514,6 +526,8 @@ class RealK8sService(K8sScaledObjectService):
             "created_at": metadata.get("creationTimestamp", ""),
             "updated_at": metadata.get("creationTimestamp", ""),
         }
+        logger.info(f"RealK8s _crd_to_dict result: scaling_behavior = {result['scaling_behavior']}")
+        return result
 
     @staticmethod
     def _dict_to_crd(data: dict) -> dict:
