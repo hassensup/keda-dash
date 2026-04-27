@@ -72,6 +72,7 @@ export default function ScaledObjectDetailPage() {
   const [saving, setSaving] = useState(false);
   const [namespaces, setNamespaces] = useState([]);
   const [deployments, setDeployments] = useState([]);
+  const [selectedTriggerType, setSelectedTriggerType] = useState("cron");
   const [form, setForm] = useState({
     name: "", namespace: "default", scaler_type: "cron",
     target_deployment: "", min_replicas: 0, max_replicas: 10,
@@ -143,7 +144,7 @@ export default function ScaledObjectDetailPage() {
   };
 
   const addTrigger = () => {
-    const fields = SCALER_FIELDS[form.scaler_type] || [];
+    const fields = SCALER_FIELDS[selectedTriggerType] || [];
     const metadata = {};
     fields.forEach((f) => {
       if (f.key === "metricType") {
@@ -154,7 +155,7 @@ export default function ScaledObjectDetailPage() {
     });
     setForm((prev) => ({
       ...prev,
-      triggers: [...prev.triggers, { type: form.scaler_type, metricType: SCALER_FIELDS[form.scaler_type]?.find(f => f.key === 'metricType')?.default || "", metadata }],
+      triggers: [...prev.triggers, { type: selectedTriggerType, metricType: SCALER_FIELDS[selectedTriggerType]?.find(f => f.key === 'metricType')?.default || "", metadata }],
     }));
   };
 
@@ -317,13 +318,27 @@ export default function ScaledObjectDetailPage() {
 
         <TabsContent value="triggers">
           <div className="bg-white border border-slate-200 rounded-md p-6 space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">
                 Triggers ({form.triggers.length})
               </p>
-              <Button variant="outline" size="sm" onClick={addTrigger} data-testid="add-trigger-btn">
-                <Plus className="w-3.5 h-3.5 mr-1.5" /> Add Trigger
-              </Button>
+              <div className="flex items-center gap-2">
+                <Select value={selectedTriggerType} onValueChange={setSelectedTriggerType}>
+                  <SelectTrigger className="w-40 h-8 text-xs" data-testid="trigger-type-select">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(SCALER_FIELDS).map((type) => (
+                      <SelectItem key={type} value={type} className="text-xs capitalize">
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="sm" onClick={addTrigger} data-testid="add-trigger-btn">
+                  <Plus className="w-3.5 h-3.5 mr-1.5" /> Add Trigger
+                </Button>
+              </div>
             </div>
             {form.triggers.length === 0 && (
               <p className="text-sm text-slate-400 py-4 text-center">No triggers configured. Add one to get started.</p>
