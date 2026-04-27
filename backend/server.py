@@ -315,6 +315,29 @@ async def lifespan(app):
     global k8s_service
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # Migration: Add scaling_behavior_json column if it doesn't exist
+    async with engine.begin() as conn:
+        def add_column_if_not_exists(connection):
+            from sqlalchemy import inspect, text
+            inspector = inspect(connection)
+            columns = [col['name'] for col in inspector.get_columns('scaled_objects')]
+            if 'scaling_behavior_json' not in columns:
+                logger.info("Adding scaling_behavior_json column to scaled_objects table")
+                # Detect database type
+                dialect_name = connection.dialect.name
+                if dialect_name == 'postgresql':
+                    connection.execute(text(
+                        "ALTER TABLE scaled_objects ADD COLUMN scaling_behavior_json TEXT"
+                    ))
+                elif dialect_name == 'sqlite':
+                    connection.execute(text(
+                        "ALTER TABLE scaled_objects ADD COLUMN scaling_behavior_json TEXT"
+                    ))
+                logger.info("Column scaling_behavior_json added successfully")
+        
+        await conn.run_sync(add_column_if_not_exists)
+    
     await seed_data()
 
     # Initialize K8s service
