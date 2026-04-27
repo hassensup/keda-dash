@@ -261,16 +261,26 @@ export default function ScaledObjectDetailPage() {
         }
       }
       
+      console.log("[DEBUG Frontend] Saving with data:", {
+        hasScalingBehavior: !!dataToSend.scaling_behavior,
+        hasTriggers: !!dataToSend.triggers,
+        scalingBehavior: dataToSend.scaling_behavior,
+        triggers: dataToSend.triggers?.length
+      });
+      
       if (isNew) {
         await api.post("/scaled-objects", dataToSend);
         toast.success("ScaledObject created");
       } else {
         const { id: _id, ...updateData } = dataToSend;
+        console.log("[DEBUG Frontend] Update data keys:", Object.keys(updateData));
+        console.log("[DEBUG Frontend] scaling_behavior in updateData:", 'scaling_behavior' in updateData);
         await api.put(`/scaled-objects/${id}`, updateData);
         toast.success("ScaledObject updated");
       }
       navigate("/");
     } catch (err) {
+      console.error("[DEBUG Frontend] Save error:", err);
       toast.error(err.response?.data?.detail || "Save failed");
     } finally {
       setSaving(false);

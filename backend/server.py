@@ -426,7 +426,26 @@ async def get_scaled_object(obj_id: str, current_user: dict = Depends(get_curren
 
 @api_router.put("/scaled-objects/{obj_id:path}", tags=["ScaledObjects"])
 async def update_scaled_object(obj_id: str, data: ScaledObjectUpdate, current_user: dict = Depends(get_current_user)):
+    # DEBUG: Log raw request data
+    logger.info(f"[DEBUG] PUT /scaled-objects/{obj_id} - Raw Pydantic model: {data}")
+    
     update_data = data.model_dump(exclude_unset=True)
+    logger.info(f"[DEBUG] model_dump(exclude_unset=True) keys: {list(update_data.keys())}")
+    logger.info(f"[DEBUG] 'scaling_behavior' in update_data: {'scaling_behavior' in update_data}")
+    logger.info(f"[DEBUG] 'triggers' in update_data: {'triggers' in update_data}")
+    
+    if 'scaling_behavior' in update_data:
+        logger.info(f"[DEBUG] scaling_behavior value: {update_data['scaling_behavior']}")
+    else:
+        logger.warning(f"[DEBUG] scaling_behavior NOT in update_data! This is the problem!")
+        # Try with exclude_unset=False
+        update_data_all = data.model_dump(exclude_unset=False)
+        logger.info(f"[DEBUG] model_dump(exclude_unset=False) keys: {list(update_data_all.keys())}")
+        if 'scaling_behavior' in update_data_all:
+            logger.info(f"[DEBUG] scaling_behavior IS in exclude_unset=False: {update_data_all['scaling_behavior']}")
+            # Use this instead
+            update_data = update_data_all
+    
     try:
         result = await k8s_service.update_object(obj_id, update_data)
         if not result:

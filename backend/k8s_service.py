@@ -300,6 +300,11 @@ class RealK8sService(K8sScaledObjectService):
         return self._crd_to_dict(result)
 
     async def update_object(self, obj_id: str, data: dict) -> dict:
+        logger.info(f"[DEBUG K8s] update_object called with obj_id={obj_id}")
+        logger.info(f"[DEBUG K8s] data keys: {list(data.keys())}")
+        logger.info(f"[DEBUG K8s] 'scaling_behavior' in data: {'scaling_behavior' in data}")
+        logger.info(f"[DEBUG K8s] 'triggers' in data: {'triggers' in data}")
+        
         ns, name = self._parse_id(obj_id)
 
         def _update():
@@ -323,8 +328,10 @@ class RealK8sService(K8sScaledObjectService):
                 spec["triggers"] = data["triggers"]
             
             # Handle scaling behavior
+            logger.info(f"[DEBUG K8s] About to check scaling_behavior. 'scaling_behavior' in data: {'scaling_behavior' in data}")
             if "scaling_behavior" in data:
                 scaling_behavior = data["scaling_behavior"]
+                logger.info(f"[DEBUG K8s] scaling_behavior value: {scaling_behavior}")
                 if scaling_behavior:
                     behavior = {}
                     
@@ -342,6 +349,7 @@ class RealK8sService(K8sScaledObjectService):
                                 for p in scale_up.get("policies", [])
                             ]
                         }
+                        logger.info(f"[DEBUG K8s] Created scaleUp: {behavior['scaleUp']}")
                     
                     if scaling_behavior.get("scale_down"):
                         scale_down = scaling_behavior["scale_down"]
@@ -357,17 +365,24 @@ class RealK8sService(K8sScaledObjectService):
                                 for p in scale_down.get("policies", [])
                             ]
                         }
+                        logger.info(f"[DEBUG K8s] Created scaleDown: {behavior['scaleDown']}")
                     
                     if behavior:
                         spec["behavior"] = behavior
+                        logger.info(f"[DEBUG K8s] Added behavior to spec: {behavior}")
                     else:
                         # Remove behavior if both scale_up and scale_down are null
                         spec.pop("behavior", None)
+                        logger.info("[DEBUG K8s] Removed behavior (both null)")
                 else:
                     # Remove behavior if scaling_behavior is null
                     spec.pop("behavior", None)
+                    logger.info("[DEBUG K8s] Removed behavior (scaling_behavior is null)")
+            else:
+                logger.warning("[DEBUG K8s] scaling_behavior NOT in data - will not update behavior!")
 
             existing["spec"] = spec
+            logger.info(f"[DEBUG K8s] Final spec has 'behavior': {'behavior' in spec}")
 
             # Handle name/namespace change via delete + recreate
             new_name = data.get("name", name)
