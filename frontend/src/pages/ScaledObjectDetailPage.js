@@ -79,7 +79,11 @@ export default function ScaledObjectDetailPage() {
   useEffect(() => {
     if (!isNew) {
       api.get(`/scaled-objects/${id}`)
-        .then(({ data }) => setForm(data))
+        .then(({ data }) => {
+          console.log("ScaledObject data:", data);
+          console.log("Triggers:", data.triggers);
+          setForm(data);
+        })
         .catch(() => { toast.error("Not found"); navigate("/"); })
         .finally(() => setLoading(false));
     }
@@ -157,17 +161,17 @@ export default function ScaledObjectDetailPage() {
           {!isNew && (
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <Badge variant="outline" className="font-mono text-xs">{form.namespace}</Badge>
-              {form.triggers.length > 0 ? (
-                // Show all unique scaler types from triggers
-                [...new Set(form.triggers.map(t => t.type))].map((type, idx) => (
+              {(() => {
+                const uniqueTypes = form.triggers.length > 0 
+                  ? [...new Set(form.triggers.map(t => t.type))]
+                  : [form.scaler_type];
+                console.log("Unique scaler types:", uniqueTypes);
+                return uniqueTypes.map((type, idx) => (
                   <Badge key={idx} variant="outline" className="text-xs capitalize">
                     {type}
                   </Badge>
-                ))
-              ) : (
-                // Fallback to scaler_type if no triggers
-                <Badge variant="outline" className="text-xs capitalize">{form.scaler_type}</Badge>
-              )}
+                ));
+              })()}
             </div>
           )}
         </div>
