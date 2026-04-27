@@ -196,17 +196,18 @@ export default function ScaledObjectDetailPage() {
               <FormField label="Namespace" value={form.namespace} onChange={(v) => updateField("namespace", v)} testId="field-namespace" mono />
               <FormField label="Target Deployment" value={form.target_deployment} onChange={(v) => updateField("target_deployment", v)} testId="field-target" mono />
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Scaler Type</Label>
-                <Select value={form.scaler_type} onValueChange={(v) => updateField("scaler_type", v)}>
-                  <SelectTrigger data-testid="field-scaler-type" className="h-9 font-mono text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SCALER_TYPE_LIST.map((t) => (
-                      <SelectItem key={t} value={t}>{t}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Scaler Types</Label>
+                <div className="flex flex-wrap gap-2 min-h-[36px] items-center border border-slate-200 rounded-md px-3 py-2 bg-slate-50">
+                  {form.triggers.length > 0 ? (
+                    [...new Set(form.triggers.map(t => t.type))].map((type, idx) => (
+                      <Badge key={idx} variant="secondary" className="text-xs font-mono capitalize">
+                        {type}
+                      </Badge>
+                    ))
+                  ) : (
+                    <span className="text-xs text-slate-400">No triggers configured</span>
+                  )}
+                </div>
               </div>
               {!isNew && (
                 <div className="space-y-1.5">
