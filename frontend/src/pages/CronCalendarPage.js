@@ -74,6 +74,12 @@ export default function CronCalendarPage() {
         return true;
       }
       
+      // Weekdays pattern: 1-5 or any combination of multiple days
+      if (dayOfMonth === '*' && month === '*' && 
+          (dayOfWeek.includes('-') || dayOfWeek.includes(','))) {
+        return true;
+      }
+      
       // Every weekend: Saturday and Sunday (0,6 or 6,0 or 0,7 or 6,7)
       if (dayOfMonth === '*' && month === '*' && 
           (dayOfWeek === '0,6' || dayOfWeek === '6,0' || 
