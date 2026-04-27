@@ -77,6 +77,10 @@ export default function ScaledObjectDetailPage() {
     name: "", namespace: "default", scaler_type: "cron",
     target_deployment: "", min_replicas: 0, max_replicas: 10,
     cooldown_period: 300, polling_interval: 30, triggers: [], status: "Active",
+    scaling_behavior: {
+      scale_up: null,
+      scale_down: null,
+    }
   });
 
   useEffect(() => {
@@ -113,6 +117,13 @@ export default function ScaledObjectDetailPage() {
         .then(({ data }) => {
           console.log("ScaledObject data:", data);
           console.log("Triggers:", data.triggers);
+          // Initialiser scaling_behavior avec la structure correcte si null
+          if (!data.scaling_behavior) {
+            data.scaling_behavior = {
+              scale_up: null,
+              scale_down: null,
+            };
+          }
           setForm(data);
         })
         .catch(() => { toast.error("Not found"); navigate("/"); })
@@ -163,6 +174,77 @@ export default function ScaledObjectDetailPage() {
     setForm((prev) => ({
       ...prev,
       triggers: prev.triggers.filter((_, i) => i !== idx),
+    }));
+  };
+
+  const toggleScalingBehavior = (type) => {
+    setForm((prev) => ({
+      ...prev,
+      scaling_behavior: {
+        ...prev.scaling_behavior,
+        [type]: prev.scaling_behavior[type] === null ? {
+          stabilization_window_seconds: 300,
+          select_policy: "Max",
+          policies: []
+        } : null
+      }
+    }));
+  };
+
+  const updateScalingBehaviorField = (type, field, value) => {
+    setForm((prev) => ({
+      ...prev,
+      scaling_behavior: {
+        ...prev.scaling_behavior,
+        [type]: {
+          ...prev.scaling_behavior[type],
+          [field]: value
+        }
+      }
+    }));
+  };
+
+  const addScalingPolicy = (type) => {
+    setForm((prev) => ({
+      ...prev,
+      scaling_behavior: {
+        ...prev.scaling_behavior,
+        [type]: {
+          ...prev.scaling_behavior[type],
+          policies: [
+            ...prev.scaling_behavior[type].policies,
+            { type: "Percent", value: 100, period_seconds: 15 }
+          ]
+        }
+      }
+    }));
+  };
+
+  const removeScalingPolicy = (type, idx) => {
+    setForm((prev) => ({
+      ...prev,
+      scaling_behavior: {
+        ...prev.scaling_behavior,
+        [type]: {
+          ...prev.scaling_behavior[type],
+          policies: prev.scaling_behavior[type].policies.filter((_, i) => i !== idx)
+        }
+      }
+    }));
+  };
+
+  const updateScalingPolicy = (type, idx, field, value) => {
+    setForm((prev) => ({
+      ...prev,
+      scaling_behavior: {
+        ...prev.scaling_behavior,
+        [type]: {
+          ...prev.scaling_behavior[type],
+          policies: prev.scaling_behavior[type].policies.map((p, i) => 
+            i === idx ? { ...p, [field]: value } : p
+          )
+        }
+      }
     }));
   };
 
@@ -307,12 +389,232 @@ export default function ScaledObjectDetailPage() {
         </TabsContent>
 
         <TabsContent value="scaling">
-          <div className="bg-white border border-slate-200 rounded-md p-6">
-            <div className="grid grid-cols-2 gap-4">
-              <NumField label="Min Replicas" value={form.min_replicas} onChange={(v) => updateField("min_replicas", v)} testId="field-min-replicas" />
-              <NumField label="Max Replicas" value={form.max_replicas} onChange={(v) => updateField("max_replicas", v)} testId="field-max-replicas" />
-              <NumField label="Cooldown Period (s)" value={form.cooldown_period} onChange={(v) => updateField("cooldown_period", v)} testId="field-cooldown" />
-              <NumField label="Polling Interval (s)" value={form.polling_interval} onChange={(v) => updateField("polling_interval", v)} testId="field-polling" />
+          <div className="space-y-4">
+            {/* Basic Scaling Parameters */}
+            <div className="bg-white border border-slate-200 rounded-md p-6">
+              <h3 className="text-sm font-semibold text-slate-700 mb-4">Basic Parameters</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <NumField label="Min Replicas" value={form.min_replicas} onChange={(v) => updateField("min_replicas", v)} testId="field-min-replicas" />
+                <NumField label="Max Replicas" value={form.max_replicas} onChange={(v) => updateField("max_replicas", v)} testId="field-max-replicas" />
+                <NumField label="Cooldown Period (s)" value={form.cooldown_period} onChange={(v) => updateField("cooldown_period", v)} testId="field-cooldown" />
+                <NumField label="Polling Interval (s)" value={form.polling_interval} onChange={(v) => updateField("polling_interval", v)} testId="field-polling" />
+              </div>
+            </div>
+
+            {/* Scaling Behavior */}
+            <div className="bg-white border border-slate-200 rounded-md p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700">Scaling Behavior</h3>
+                  <p className="text-xs text-slate-500 mt-1">Optional advanced scaling policies</p>
+                </div>
+              </div>
+
+              {/* Scale Up */}
+              <div className="border border-slate-200 rounded-md p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Scale Up Behavior</Label>
+                  <Button 
+                    variant={form.scaling_behavior.scale_up ? "destructive" : "outline"} 
+                    size="sm" 
+                    onClick={() => toggleScalingBehavior("scale_up")}
+                    data-testid="toggle-scale-up"
+                  >
+                    {form.scaling_behavior.scale_up ? "Remove" : "Add"}
+                  </Button>
+                </div>
+                
+                {form.scaling_behavior.scale_up && (
+                  <div className="space-y-3 pt-2">
+                    <div className="grid grid-cols-2 gap-3">
+                      <NumField 
+                        label="Stabilization Window (s)" 
+                        value={form.scaling_behavior.scale_up.stabilization_window_seconds} 
+                        onChange={(v) => updateScalingBehaviorField("scale_up", "stabilization_window_seconds", v)} 
+                        testId="scale-up-stabilization"
+                      />
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Select Policy</Label>
+                        <Select 
+                          value={form.scaling_behavior.scale_up.select_policy} 
+                          onValueChange={(v) => updateScalingBehaviorField("scale_up", "select_policy", v)}
+                        >
+                          <SelectTrigger className="h-9" data-testid="scale-up-select-policy">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Max">Max</SelectItem>
+                            <SelectItem value="Min">Min</SelectItem>
+                            <SelectItem value="Disabled">Disabled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Policies</Label>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => addScalingPolicy("scale_up")}
+                          data-testid="add-scale-up-policy"
+                        >
+                          <Plus className="w-3.5 h-3.5 mr-1.5" /> Add Policy
+                        </Button>
+                      </div>
+                      {form.scaling_behavior.scale_up.policies.map((policy, idx) => (
+                        <div key={idx} className="grid grid-cols-4 gap-2 items-end p-2 bg-slate-50 rounded border border-slate-200">
+                          <div className="space-y-1">
+                            <Label className="text-xs text-slate-500">Type</Label>
+                            <Select 
+                              value={policy.type} 
+                              onValueChange={(v) => updateScalingPolicy("scale_up", idx, "type", v)}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Percent">Percent</SelectItem>
+                                <SelectItem value="Pods">Pods</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-slate-500">Value</Label>
+                            <Input 
+                              type="number" 
+                              value={policy.value} 
+                              onChange={(e) => updateScalingPolicy("scale_up", idx, "value", parseInt(e.target.value) || 0)}
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-slate-500">Period (s)</Label>
+                            <Input 
+                              type="number" 
+                              value={policy.period_seconds} 
+                              onChange={(e) => updateScalingPolicy("scale_up", idx, "period_seconds", parseInt(e.target.value) || 0)}
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-red-500"
+                            onClick={() => removeScalingPolicy("scale_up", idx)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Scale Down */}
+              <div className="border border-slate-200 rounded-md p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Scale Down Behavior</Label>
+                  <Button 
+                    variant={form.scaling_behavior.scale_down ? "destructive" : "outline"} 
+                    size="sm" 
+                    onClick={() => toggleScalingBehavior("scale_down")}
+                    data-testid="toggle-scale-down"
+                  >
+                    {form.scaling_behavior.scale_down ? "Remove" : "Add"}
+                  </Button>
+                </div>
+                
+                {form.scaling_behavior.scale_down && (
+                  <div className="space-y-3 pt-2">
+                    <div className="grid grid-cols-2 gap-3">
+                      <NumField 
+                        label="Stabilization Window (s)" 
+                        value={form.scaling_behavior.scale_down.stabilization_window_seconds} 
+                        onChange={(v) => updateScalingBehaviorField("scale_down", "stabilization_window_seconds", v)} 
+                        testId="scale-down-stabilization"
+                      />
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Select Policy</Label>
+                        <Select 
+                          value={form.scaling_behavior.scale_down.select_policy} 
+                          onValueChange={(v) => updateScalingBehaviorField("scale_down", "select_policy", v)}
+                        >
+                          <SelectTrigger className="h-9" data-testid="scale-down-select-policy">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Max">Max</SelectItem>
+                            <SelectItem value="Min">Min</SelectItem>
+                            <SelectItem value="Disabled">Disabled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Policies</Label>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => addScalingPolicy("scale_down")}
+                          data-testid="add-scale-down-policy"
+                        >
+                          <Plus className="w-3.5 h-3.5 mr-1.5" /> Add Policy
+                        </Button>
+                      </div>
+                      {form.scaling_behavior.scale_down.policies.map((policy, idx) => (
+                        <div key={idx} className="grid grid-cols-4 gap-2 items-end p-2 bg-slate-50 rounded border border-slate-200">
+                          <div className="space-y-1">
+                            <Label className="text-xs text-slate-500">Type</Label>
+                            <Select 
+                              value={policy.type} 
+                              onValueChange={(v) => updateScalingPolicy("scale_down", idx, "type", v)}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Percent">Percent</SelectItem>
+                                <SelectItem value="Pods">Pods</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-slate-500">Value</Label>
+                            <Input 
+                              type="number" 
+                              value={policy.value} 
+                              onChange={(e) => updateScalingPolicy("scale_down", idx, "value", parseInt(e.target.value) || 0)}
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-slate-500">Period (s)</Label>
+                            <Input 
+                              type="number" 
+                              value={policy.period_seconds} 
+                              onChange={(e) => updateScalingPolicy("scale_down", idx, "period_seconds", parseInt(e.target.value) || 0)}
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-red-500"
+                            onClick={() => removeScalingPolicy("scale_down", idx)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </TabsContent>

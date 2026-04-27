@@ -104,12 +104,17 @@ class MockK8sService(K8sScaledObjectService):
 
     async def create_object(self, data: dict) -> dict:
         async with self._session_maker() as session:
+            scaling_behavior_json = None
+            if data.get("scaling_behavior"):
+                scaling_behavior_json = json.dumps(data["scaling_behavior"])
+            
             obj = self._ScaledObjectModel(
                 name=data["name"], namespace=data.get("namespace", "default"),
                 scaler_type=data["scaler_type"], target_deployment=data["target_deployment"],
                 min_replicas=data.get("min_replicas", 0), max_replicas=data.get("max_replicas", 10),
                 cooldown_period=data.get("cooldown_period", 300), polling_interval=data.get("polling_interval", 30),
                 triggers_json=json.dumps(data.get("triggers", [])),
+                scaling_behavior_json=scaling_behavior_json,
             )
             session.add(obj)
             await session.commit()
@@ -129,6 +134,13 @@ class MockK8sService(K8sScaledObjectService):
 
             if "triggers" in data:
                 data["triggers_json"] = json.dumps(data.pop("triggers"))
+            
+            if "scaling_behavior" in data:
+                if data["scaling_behavior"]:
+                    data["scaling_behavior_json"] = json.dumps(data.pop("scaling_behavior"))
+                else:
+                    data["scaling_behavior_json"] = None
+                    data.pop("scaling_behavior")
 
             data["updated_at"] = datetime.now(timezone.utc)
 
@@ -176,6 +188,13 @@ class MockK8sService(K8sScaledObjectService):
             return [row[0] for row in result.all()]
 
     def _to_dict(self, obj):
+        scaling_behavior = None
+        if hasattr(obj, 'scaling_behavior_json') and obj.scaling_behavior_json:
+            try:
+                scaling_behavior = json.loads(obj.scaling_behavior_json)
+            except:
+                scaling_behavior = None
+        
         return {
             "id": obj.id,
             "name": obj.name,
@@ -187,6 +206,7 @@ class MockK8sService(K8sScaledObjectService):
             "cooldown_period": obj.cooldown_period,
             "polling_interval": obj.polling_interval,
             "triggers": json.loads(obj.triggers_json) if obj.triggers_json else [],
+            "scaling_behavior": scaling_behavior,
             "status": obj.status,
             "created_at": obj.created_at.isoformat() if obj.created_at else "",
             "updated_at": obj.updated_at.isoformat() if obj.updated_at else "",

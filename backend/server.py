@@ -56,6 +56,7 @@ class ScaledObjectModel(Base):
     cooldown_period = Column(Integer, default=300)
     polling_interval = Column(Integer, default=30)
     triggers_json = Column(Text, default="[]")
+    scaling_behavior_json = Column(Text, default=None, nullable=True)
     status = Column(String, default="Active")
     created_at = Column(DateTime, default=lambda: datetime.now())
     updated_at = Column(DateTime, default=lambda: datetime.now())
@@ -93,6 +94,7 @@ class ScaledObjectCreate(BaseModel):
     cooldown_period: int = 300
     polling_interval: int = 30
     triggers: list = []
+    scaling_behavior: Optional[dict] = None
 
 
 class ScaledObjectUpdate(BaseModel):
@@ -105,6 +107,7 @@ class ScaledObjectUpdate(BaseModel):
     cooldown_period: Optional[int] = None
     polling_interval: Optional[int] = None
     triggers: Optional[list] = None
+    scaling_behavior: Optional[dict] = None
     status: Optional[str] = None
 
 
@@ -176,6 +179,13 @@ async def get_current_user(request: Request):
 
 # ============ HELPERS ============
 def so_to_dict(obj):
+    scaling_behavior = None
+    if obj.scaling_behavior_json:
+        try:
+            scaling_behavior = json.loads(obj.scaling_behavior_json)
+        except:
+            scaling_behavior = None
+    
     return {
         "id": obj.id,
         "name": obj.name,
@@ -187,6 +197,7 @@ def so_to_dict(obj):
         "cooldown_period": obj.cooldown_period,
         "polling_interval": obj.polling_interval,
         "triggers": json.loads(obj.triggers_json) if obj.triggers_json else [],
+        "scaling_behavior": scaling_behavior,
         "status": obj.status,
         "created_at": obj.created_at.isoformat() if obj.created_at else "",
         "updated_at": obj.updated_at.isoformat() if obj.updated_at else "",
