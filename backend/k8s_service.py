@@ -56,6 +56,10 @@ class K8sScaledObjectService(ABC):
         pass
 
     @abstractmethod
+    async def list_deployments(self, namespace=None) -> list:
+        pass
+
+    @abstractmethod
     def get_mode(self) -> str:
         pass
 
@@ -163,6 +167,14 @@ class MockK8sService(K8sScaledObjectService):
             )
             return [row[0] for row in result.all()]
 
+    async def list_deployments(self, namespace=None) -> list:
+        async with self._session_maker() as session:
+            query = self._select(self._ScaledObjectModel.target_deployment).distinct()
+            if namespace:
+                query = query.where(self._ScaledObjectModel.namespace == namespace)
+            result = await session.execute(query)
+            return [row[0] for row in result.all()]
+
     def _to_dict(self, obj):
         return {
             "id": obj.id,
@@ -188,6 +200,7 @@ class RealK8sService(K8sScaledObjectService):
         self._connected = False
         self._custom_api = None
         self._core_api = None
+        self._apps_api = None
         self._init_client()
 
     def _init_client(self):
@@ -205,6 +218,7 @@ class RealK8sService(K8sScaledObjectService):
                     return
             self._custom_api = client.CustomObjectsApi()
             self._core_api = client.CoreV1Api()
+            self._apps_api = client.AppsV1Api()
             self._connected = True
             logger.info("K8s: Client initialized successfully")
         except Exception as e:
@@ -340,6 +354,20 @@ class RealK8sService(K8sScaledObjectService):
         for obj in objects:
             types.add(obj["scaler_type"])
         return sorted(list(types))
+
+    async def list_deployments(self, namespace=None) -> list:
+        def _list():
+            if namespace:
+                resp = self._apps_api.list_namespaced_deployment(namespace=namespace)
+            else:
+                resp = self._apps_api.list_deployment_for_all_namespaces()
+            return [d.metadata.name for d in resp.items]
+
+        try:
+            return await asyncio.to_thread(_list)
+        except Exception as e:
+            logger.error(f"K8s: Failed to list deployments: {e}")
+            return []
 
     @staticmethod
     def _parse_id(obj_id: str):

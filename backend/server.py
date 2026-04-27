@@ -535,6 +535,16 @@ async def list_scaler_types(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ============ DEPLOYMENTS (via K8s Service) ============
+@api_router.get("/deployments")
+async def list_deployments(namespace: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    try:
+        return await k8s_service.list_deployments(namespace=namespace)
+    except Exception as e:
+        logger.error(f"Failed to list deployments: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============ K8S STATUS ============
 @api_router.get("/k8s-status")
 async def get_k8s_status(current_user: dict = Depends(get_current_user)):
