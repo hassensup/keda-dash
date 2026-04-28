@@ -32,7 +32,7 @@ export default function CronCalendarPage() {
   const [editTrigger, setEditTrigger] = useState(null);
   const [form, setForm] = useState({ ...EMPTY_TRIGGER });
   const [saving, setSaving] = useState(false);
-  const [hideRecurring, setHideRecurring] = useState(false);
+  const [hideRecurring, setHideRecurring] = useState(true);
 
   const fetchScaledObjects = useCallback(async () => {
     try {
