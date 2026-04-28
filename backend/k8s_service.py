@@ -390,15 +390,22 @@ class RealK8sService(K8sScaledObjectService):
                     logger.info(f"[DEBUG K8s] behavior is truthy: {bool(behavior)}")
                     
                     if behavior:
-                        spec["behavior"] = behavior
-                        logger.info(f"[DEBUG K8s] Added behavior to spec: {behavior}")
+                        # KEDA requires behavior to be nested under advanced.horizontalPodAutoscalerConfig
+                        if "advanced" not in spec:
+                            spec["advanced"] = {}
+                        if "horizontalPodAutoscalerConfig" not in spec["advanced"]:
+                            spec["advanced"]["horizontalPodAutoscalerConfig"] = {}
+                        spec["advanced"]["horizontalPodAutoscalerConfig"]["behavior"] = behavior
+                        logger.info(f"[DEBUG K8s] Added behavior to spec.advanced.horizontalPodAutoscalerConfig: {behavior}")
                     else:
                         # Remove behavior if both scale_up and scale_down are null
-                        spec.pop("behavior", None)
+                        if "advanced" in spec and "horizontalPodAutoscalerConfig" in spec["advanced"]:
+                            spec["advanced"]["horizontalPodAutoscalerConfig"].pop("behavior", None)
                         logger.info("[DEBUG K8s] Removed behavior (both null - behavior dict is empty)")
                 else:
                     # Remove behavior if scaling_behavior is null
-                    spec.pop("behavior", None)
+                    if "advanced" in spec and "horizontalPodAutoscalerConfig" in spec["advanced"]:
+                        spec["advanced"]["horizontalPodAutoscalerConfig"].pop("behavior", None)
                     logger.info("[DEBUG K8s] Removed behavior (scaling_behavior is falsy)")
             else:
                 logger.warning("[DEBUG K8s] scaling_behavior NOT in data - will not update behavior!")
@@ -407,6 +414,11 @@ class RealK8sService(K8sScaledObjectService):
             logger.info(f"[DEBUG K8s] Final spec has 'behavior': {'behavior' in spec}")
             if 'behavior' in spec:
                 logger.info(f"[DEBUG K8s] Final spec['behavior']: {spec['behavior']}")
+            
+            # Log the complete body being sent to Kubernetes
+            import json as json_module
+            logger.info(f"[DEBUG K8s] Complete body being sent to K8s API:")
+            logger.info(json_module.dumps(existing, indent=2, default=str))
             logger.info(f"[DEBUG K8s] About to send update to Kubernetes API")
 
             # Handle name/namespace change via delete + recreate
@@ -520,20 +532,40 @@ class RealK8sService(K8sScaledObjectService):
 
         # Extract scaling behavior if present
         scaling_behavior = None
-        behavior = spec.get("behavior")
+        # KEDA stores behavior under spec.advanced.horizontalPodAutoscalerConfig.behavior
+        advanced = spec.get("advanced", {})
+        hpa_config = advanced.get("horizontalPodAutoscalerConfig", {})
+        behavior = hpa_config.get("behavior")
+        
         if behavior:
             scaling_behavior = {}
             if "scaleUp" in behavior:
+                scale_up = behavior["scaleUp"]
                 scaling_behavior["scale_up"] = {
-                    "stabilization_window_seconds": behavior["scaleUp"].get("stabilizationWindowSeconds", 300),
-                    "select_policy": behavior["scaleUp"].get("selectPolicy", "Max"),
-                    "policies": behavior["scaleUp"].get("policies", [])
+                    "stabilization_window_seconds": scale_up.get("stabilizationWindowSeconds", 300),
+                    "select_policy": scale_up.get("selectPolicy", "Max"),
+                    "policies": [
+                        {
+                            "type": p.get("type", "Percent"),
+                            "value": p.get("value", 100),
+                            "period_seconds": p.get("periodSeconds", 15)
+                        }
+                        for p in scale_up.get("policies", [])
+                    ]
                 }
             if "scaleDown" in behavior:
+                scale_down = behavior["scaleDown"]
                 scaling_behavior["scale_down"] = {
-                    "stabilization_window_seconds": behavior["scaleDown"].get("stabilizationWindowSeconds", 300),
-                    "select_policy": behavior["scaleDown"].get("selectPolicy", "Max"),
-                    "policies": behavior["scaleDown"].get("policies", [])
+                    "stabilization_window_seconds": scale_down.get("stabilizationWindowSeconds", 300),
+                    "select_policy": scale_down.get("selectPolicy", "Max"),
+                    "policies": [
+                        {
+                            "type": p.get("type", "Percent"),
+                            "value": p.get("value", 100),
+                            "period_seconds": p.get("periodSeconds", 15)
+                        }
+                        for p in scale_down.get("policies", [])
+                    ]
                 }
 
         return {
@@ -603,7 +635,12 @@ class RealK8sService(K8sScaledObjectService):
                 }
             
             if behavior:
-                spec["behavior"] = behavior
+                # KEDA requires behavior to be nested under advanced.horizontalPodAutoscalerConfig
+                spec["advanced"] = {
+                    "horizontalPodAutoscalerConfig": {
+                        "behavior": behavior
+                    }
+                }
         
         return {
             "apiVersion": f"{KEDA_GROUP}/{KEDA_VERSION}",
