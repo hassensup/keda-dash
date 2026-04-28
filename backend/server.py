@@ -134,10 +134,7 @@ class CronEventUpdate(BaseModel):
 # ============ AUTH UTILITIES ============
 JWT_ALGORITHM = "HS256"
 
-# Add StaticFiles for serving frontend static files
-app.mount("/static", StaticFiles(directory="path_to_static_files"), name="static")
 
-# Function to get JWT secret with default value
 def get_jwt_secret():
     return os.environ["JWT_SECRET"]
 
