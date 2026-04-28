@@ -16,11 +16,53 @@ backend:
       cpu: 100m
       memory: 128Mi
   config:
-    jwtSecret: "change-me-in-production-use-a-long-random-string"
     adminEmail: "admin@example.com"
     adminPassword: "admin123"
     corsOrigins: "*"
     k8sMode: "in-cluster"
+
+# Authentication Configuration
+auth:
+  # JWT token configuration
+  jwt:
+    # REQUIRED: Secret key for signing JWT tokens
+    # SECURITY: Must be changed in production! Use a cryptographically secure random string.
+    # Generate with: openssl rand -base64 32
+    secret: "change-me-in-production-use-a-long-random-string"
+    # Token expiration time in hours
+    expirationHours: 24
+  
+  # Local username/password authentication
+  local:
+    # Enable local authentication (username/password)
+    enabled: true
+  
+  # Okta SSO authentication
+  okta:
+    # Enable Okta SSO authentication
+    # When enabled, all okta.* fields below become REQUIRED
+    enabled: false
+    
+    # Okta organization domain (e.g., dev-12345.okta.com)
+    # Required when okta.enabled=true
+    domain: ""
+    
+    # Okta application client ID
+    # Required when okta.enabled=true
+    clientId: ""
+    
+    # Okta application client secret
+    # Required when okta.enabled=true
+    # SECURITY: Store securely, never commit to version control
+    clientSecret: ""
+    
+    # OAuth2 redirect URI (must match Okta app configuration)
+    # Required when okta.enabled=true
+    # Example: https://keda-dashboard.example.com/api/auth/okta/callback
+    redirectUri: ""
+    
+    # OAuth2 scopes to request (optional)
+    scopes: "openid profile email"
 
 imagePullSecrets: []
 nameOverride: ""

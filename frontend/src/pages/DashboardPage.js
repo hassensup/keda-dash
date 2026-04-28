@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Search, Pencil, Trash2, Activity, Clock, Database, MessageSquare, Cpu, BarChart3, HardDrive } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Plus, Search, Pencil, Trash2, Activity, Clock, Database, MessageSquare, Cpu, BarChart3, HardDrive, AlertCircle } from "lucide-react";
+import PermissionGate from "@/components/PermissionGate";
 
 const SCALER_ICONS = {
   cron: Clock,
@@ -36,10 +38,12 @@ export default function DashboardPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState(null);
+  const [permissionError, setPermissionError] = useState(null);
   const navigate = useNavigate();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setPermissionError(null);
     try {
       const params = {};
       if (filterNs && filterNs !== "all") params.namespace = filterNs;
@@ -50,8 +54,12 @@ export default function DashboardPage() {
       ]);
       setObjects(objRes.data);
       setNamespaces(nsRes.data);
-    } catch {
-      toast.error("Failed to load data");
+    } catch (err) {
+      if (err.response?.status === 403) {
+        setPermissionError("You don't have permission to view ScaledObjects");
+      } else {
+        toast.error("Failed to load data");
+      }
     } finally {
       setLoading(false);
     }
@@ -66,8 +74,12 @@ export default function DashboardPage() {
       toast.success("ScaledObject deleted");
       setDeleteId(null);
       fetchData();
-    } catch {
-      toast.error("Failed to delete");
+    } catch (err) {
+      if (err.response?.status === 403) {
+        toast.error("You don't have permission to delete this ScaledObject");
+      } else {
+        toast.error("Failed to delete");
+      }
     }
   };
 
@@ -85,19 +97,33 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 space-y-6 animate-fade-in" data-testid="dashboard-page">
+      {/* Permission Error */}
+      {permissionError && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{permissionError}</AlertDescription>
+        </Alert>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 tracking-tight">Scaled Objects</h1>
           <p className="text-sm text-slate-500 mt-1">Manage KEDA autoscaling configurations</p>
         </div>
-        <Button
-          onClick={() => navigate("/scaled-objects/new")}
-          data-testid="create-scaled-object-btn"
-          className="bg-slate-900 hover:bg-slate-800 text-white transition-all duration-150 hover:-translate-y-[1px]"
+        {/* Show create button if user has write permission for the selected namespace or any namespace */}
+        <PermissionGate 
+          action="write" 
+          namespace={filterNs !== "all" ? filterNs : (namespaces[0] || "default")}
         >
-          <Plus className="w-4 h-4 mr-2" /> New ScaledObject
-        </Button>
+          <Button
+            onClick={() => navigate("/scaled-objects/new")}
+            data-testid="create-scaled-object-btn"
+            className="bg-slate-900 hover:bg-slate-800 text-white transition-all duration-150 hover:-translate-y-[1px]"
+          >
+            <Plus className="w-4 h-4 mr-2" /> New ScaledObject
+          </Button>
+        </PermissionGate>
       </div>
 
       {/* Stats */}
@@ -191,24 +217,30 @@ export default function DashboardPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => navigate(`/scaled-objects/${obj.id}`)}
-                          data-testid={`edit-so-${obj.id}`}
+                        <PermissionGate 
+                          action="write" 
+                          namespace={obj.namespace} 
+                          objectName={obj.name}
                         >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => setDeleteId(obj.id)}
-                          data-testid={`delete-so-${obj.id}`}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => navigate(`/scaled-objects/${obj.id}`)}
+                            data-testid={`edit-so-${obj.id}`}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => setDeleteId(obj.id)}
+                            data-testid={`delete-so-${obj.id}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </PermissionGate>
                       </div>
                     </TableCell>
                   </TableRow>

@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useState, useEffect } from "react";
 import api from "@/lib/api";
-import { LayoutDashboard, CalendarDays, LogOut, Activity, Cloud, HardDrive } from "lucide-react";
+import { LayoutDashboard, CalendarDays, LogOut, Activity, Cloud, HardDrive, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,10 @@ import { Badge } from "@/components/ui/badge";
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Scaled Objects" },
   { to: "/cron-calendar", icon: CalendarDays, label: "Cron Calendar" },
+];
+
+const adminNavItems = [
+  { to: "/admin/permissions", icon: Shield, label: "Permissions", adminOnly: true },
 ];
 
 export default function Sidebar() {
@@ -61,6 +65,35 @@ export default function Sidebar() {
             {item.label}
           </NavLink>
         ))}
+        
+        {/* Admin Section */}
+        {user?.role === "admin" && (
+          <>
+            <Separator className="my-2" />
+            <div className="px-3 py-1">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400">
+                Admin
+              </p>
+            </div>
+            {adminNavItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                data-testid={`nav-${item.label.toLowerCase().replace(/\s/g, "-")}`}
+                className={({ isActive }) =>
+                  `flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-all duration-150 ${
+                    isActive
+                      ? "bg-slate-100 text-slate-900 font-medium"
+                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  }`
+                }
+              >
+                <item.icon className="w-4 h-4" />
+                {item.label}
+              </NavLink>
+            ))}
+          </>
+        )}
       </nav>
       {k8sStatus && (
         <div className="px-3 pb-3">

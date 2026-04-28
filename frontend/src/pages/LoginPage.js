@@ -1,18 +1,37 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { Activity, AlertCircle } from "lucide-react";
+import api from "@/lib/api";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const [oktaEnabled, setOktaEnabled] = useState(false);
+  const [configLoading, setConfigLoading] = useState(true);
+  const { login, loginWithOkta } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const fetchAuthConfig = async () => {
+      try {
+        const { data } = await api.get("/auth/config");
+        setOktaEnabled(data.okta_enabled || false);
+      } catch (err) {
+        console.error("Failed to fetch auth config:", err);
+        setOktaEnabled(false);
+      } finally {
+        setConfigLoading(false);
+      }
+    };
+    fetchAuthConfig();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -28,6 +47,19 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  const handleOktaLogin = () => {
+    setError("");
+    loginWithOkta();
+  };
+
+  if (configLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-100 via-slate-50 to-white">
+        <div className="text-sm text-slate-400">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-100 via-slate-50 to-white">
@@ -84,6 +116,25 @@ export default function LoginPage() {
               {loading ? "Signing in..." : "Sign in"}
             </Button>
           </form>
+          {oktaEnabled && (
+            <>
+              <div className="relative my-6">
+                <Separator />
+                <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-2 text-xs text-slate-400">
+                  OR
+                </span>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleOktaLogin}
+                data-testid="okta-login-btn"
+                className="w-full h-10 font-medium transition-all duration-150 hover:-translate-y-[1px]"
+              >
+                Sign in with Okta
+              </Button>
+            </>
+          )}
         </div>
         <p className="text-center mt-4 text-xs text-slate-400">KEDA Management Interface v1.0</p>
       </div>

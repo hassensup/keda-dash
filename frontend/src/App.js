@@ -7,6 +7,7 @@ import LoginPage from "@/pages/LoginPage";
 import DashboardPage from "@/pages/DashboardPage";
 import ScaledObjectDetailPage from "@/pages/ScaledObjectDetailPage";
 import CronCalendarPage from "@/pages/CronCalendarPage";
+import AdminPermissionsPage from "@/pages/AdminPermissionsPage";
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -18,6 +19,20 @@ function ProtectedRoute({ children }) {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
+  return children;
+}
+
+function AdminRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
+        <div className="text-sm text-slate-400">Loading...</div>
+      </div>
+    );
+  }
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== "admin") return <Navigate to="/" replace />;
   return children;
 }
 
@@ -36,6 +51,7 @@ function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="scaled-objects/*" element={<ScaledObjectDetailPage />} />
         <Route path="cron-calendar" element={<CronCalendarPage />} />
+        <Route path="admin/permissions" element={<AdminRoute><AdminPermissionsPage /></AdminRoute>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

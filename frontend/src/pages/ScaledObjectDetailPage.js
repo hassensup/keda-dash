@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Save, Plus, Trash2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ArrowLeft, Save, Plus, Trash2, AlertCircle } from "lucide-react";
+import PermissionGate from "@/components/PermissionGate";
 
 const SCALER_FIELDS = {
   cron: [
@@ -70,6 +72,7 @@ export default function ScaledObjectDetailPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
+  const [permissionError, setPermissionError] = useState(null);
   const [namespaces, setNamespaces] = useState([]);
   const [deployments, setDeployments] = useState([]);
   const [selectedTriggerType, setSelectedTriggerType] = useState("cron");
@@ -126,7 +129,14 @@ export default function ScaledObjectDetailPage() {
           }
           setForm(data);
         })
-        .catch(() => { toast.error("Not found"); navigate("/"); })
+        .catch((err) => { 
+          if (err.response?.status === 403) {
+            setPermissionError("You don't have permission to view this ScaledObject");
+          } else {
+            toast.error("Not found"); 
+          }
+          navigate("/"); 
+        })
         .finally(() => setLoading(false));
     }
   }, [id, isNew, navigate]);
@@ -250,6 +260,7 @@ export default function ScaledObjectDetailPage() {
 
   const handleSave = async () => {
     setSaving(true);
+    setPermissionError(null);
     try {
       // Préparer les données à envoyer
       const dataToSend = { ...form };
@@ -281,7 +292,12 @@ export default function ScaledObjectDetailPage() {
       navigate("/");
     } catch (err) {
       console.error("[DEBUG Frontend] Save error:", err);
-      toast.error(err.response?.data?.detail || "Save failed");
+      if (err.response?.status === 403) {
+        setPermissionError("You don't have permission to " + (isNew ? "create" : "update") + " this ScaledObject");
+        toast.error("Permission denied");
+      } else {
+        toast.error(err.response?.data?.detail || "Save failed");
+      }
     } finally {
       setSaving(false);
     }
@@ -291,6 +307,14 @@ export default function ScaledObjectDetailPage() {
 
   return (
     <div className="p-6 space-y-6 animate-fade-in" data-testid="scaled-object-detail-page">
+      {/* Permission Error */}
+      {permissionError && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{permissionError}</AlertDescription>
+        </Alert>
+      )}
+
       {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate("/")} data-testid="back-btn" className="h-8 w-8">
@@ -317,10 +341,16 @@ export default function ScaledObjectDetailPage() {
             </div>
           )}
         </div>
-        <Button onClick={handleSave} disabled={saving} data-testid="save-btn"
-          className="bg-slate-900 hover:bg-slate-800 text-white transition-all duration-150 hover:-translate-y-[1px]">
-          <Save className="w-4 h-4 mr-2" />{saving ? "Saving..." : "Save"}
-        </Button>
+        <PermissionGate 
+          action="write" 
+          namespace={form.namespace} 
+          objectName={isNew ? null : form.name}
+        >
+          <Button onClick={handleSave} disabled={saving} data-testid="save-btn"
+            className="bg-slate-900 hover:bg-slate-800 text-white transition-all duration-150 hover:-translate-y-[1px]">
+            <Save className="w-4 h-4 mr-2" />{saving ? "Saving..." : "Save"}
+          </Button>
+        </PermissionGate>
       </div>
 
       {/* Tabs */}

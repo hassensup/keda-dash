@@ -5,6 +5,22 @@ metadata:
   labels:
     {{- include "keda-dashboard.labels" . | nindent 4 }}
 data:
-  CORS_ORIGINS: {{ .Values.backend.config.corsOrigins| quote }}
+  # Application configuration
+  CORS_ORIGINS: {{ .Values.backend.config.corsOrigins | quote }}
   ADMIN_EMAIL: {{ .Values.backend.config.adminEmail | quote }}
   K8S_MODE: {{ .Values.backend.config.k8sMode | quote }}
+  
+  # Authentication feature flags
+  LOCAL_AUTH_ENABLED: {{ .Values.auth.local.enabled | quote }}
+  OKTA_ENABLED: {{ .Values.auth.okta.enabled | quote }}
+  
+  # JWT configuration
+  TOKEN_EXPIRATION_HOURS: {{ .Values.auth.jwt.expirationHours | quote }}
+  
+  # Okta configuration (only included if Okta is enabled)
+  {{- if .Values.auth.okta.enabled }}
+  OKTA_DOMAIN: {{ .Values.auth.okta.domain | quote }}
+  OKTA_CLIENT_ID: {{ .Values.auth.okta.clientId | quote }}
+  OKTA_REDIRECT_URI: {{ .Values.auth.okta.redirectUri | quote }}
+  OKTA_SCOPES: {{ .Values.auth.okta.scopes | quote }}
+  {{- end }}
