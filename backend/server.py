@@ -10,9 +10,11 @@ from fastapi.responses import HTMLResponse
 from starlette.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, relationship
-from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey, select
-from pydantic import BaseModel
+from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey, select, Index
+from sqlalchemy.orm import selectinload
+from pydantic import BaseModel, validator
 from typing import List, Optional
+from enum import Enum
 import os
 import logging
 import json
@@ -38,10 +40,31 @@ class UserModel(Base):
     __tablename__ = "users"
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     email = Column(String, unique=True, nullable=False, index=True)
-    password_hash = Column(String, nullable=False)
+    password_hash = Column(String, nullable=True)  # Changed to nullable for Okta users
     name = Column(String, nullable=False)
     role = Column(String, default="user")
+    auth_provider = Column(String, default="local")  # NEW: 'local' or 'okta'
+    okta_subject = Column(String, nullable=True, index=True)  # NEW: Okta 'sub' claim
     created_at = Column(DateTime, default=lambda: datetime.now())
+    updated_at = Column(DateTime, default=lambda: datetime.now(), onupdate=lambda: datetime.now())
+    
+    # Relationships
+    permissions = relationship("PermissionModel", back_populates="user", cascade="all, delete-orphan")
+
+
+class PermissionModel(Base):
+    __tablename__ = "permissions"
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    action = Column(String, nullable=False)  # 'read' or 'write'
+    scope = Column(String, nullable=False)  # 'namespace' or 'object'
+    namespace = Column(String, nullable=False, index=True)
+    object_name = Column(String, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now())
+    created_by = Column(String, nullable=True)
+    
+    # Relationships
+    user = relationship("UserModel", back_populates="permissions")
 
 
 class ScaledObjectModel(Base):
@@ -78,10 +101,69 @@ class CronEventModel(Base):
     scaled_object = relationship("ScaledObjectModel", back_populates="cron_events")
 
 
+# ============ INITIALIZE RBAC MIDDLEWARE ============
+# Initialize middleware early so get_current_user_with_permissions is available for route decorators
+from backend.rbac.middleware import initialize_middleware, get_current_user_with_permissions
+initialize_middleware(async_session_maker, UserModel, PermissionModel)
+
+
 # ============ PYDANTIC SCHEMAS ============
 class LoginRequest(BaseModel):
     email: str
     password: str
+
+
+# Permission Enums
+class PermissionAction(str, Enum):
+    READ = "read"
+    WRITE = "write"
+
+
+class PermissionScope(str, Enum):
+    NAMESPACE = "namespace"
+    OBJECT = "object"
+
+
+# Permission Schemas
+class Permission(BaseModel):
+    id: str
+    user_id: str
+    action: PermissionAction
+    scope: PermissionScope
+    namespace: str
+    object_name: Optional[str] = None
+    created_at: datetime
+    created_by: Optional[str] = None
+
+
+class PermissionCreate(BaseModel):
+    user_id: str
+    action: PermissionAction
+    scope: PermissionScope
+    namespace: str
+    object_name: Optional[str] = None
+    
+    @validator('object_name')
+    def validate_object_name(cls, v, values):
+        if values.get('scope') == PermissionScope.OBJECT and not v:
+            raise ValueError('object_name required for object scope')
+        if values.get('scope') == PermissionScope.NAMESPACE and v:
+            raise ValueError('object_name must be null for namespace scope')
+        return v
+
+
+class UserProfile(BaseModel):
+    id: str
+    email: str
+    name: str
+    role: str
+    auth_provider: str
+    permissions: List[Permission] = []
+
+
+class UserWithPermissions(BaseModel):
+    user: UserProfile
+    permissions: List[Permission]
 
 
 class ScaledObjectCreate(BaseModel):
@@ -303,8 +385,10 @@ async def seed_data():
                 session.add_all(events)
                 await session.commit()
 
-        os.makedirs("/app/memory", exist_ok=True)
-        with open("/app/memory/test_credentials.md", "w") as f:
+        # Write test credentials to memory directory (use local path in development)
+        memory_dir = Path("/app/memory") if Path("/app").exists() else ROOT_DIR.parent / "memory"
+        os.makedirs(memory_dir, exist_ok=True)
+        with open(memory_dir / "test_credentials.md", "w") as f:
             f.write(f"# Test Credentials\n\n## Admin\n- Email: {admin_email}\n- Password: {admin_password}\n- Role: admin\n\n")
             f.write("## Auth Endpoints\n- POST /api/auth/login\n- POST /api/auth/logout\n- GET /api/auth/me\n")
 
@@ -383,11 +467,35 @@ async def login(req: LoginRequest, response: Response):
 @api_router.get("/auth/me", tags=["Authentication"])
 async def get_me(current_user: dict = Depends(get_current_user)):
     async with async_session_maker() as session:
-        result = await session.execute(select(UserModel).where(UserModel.id == current_user["id"]))
+        result = await session.execute(
+            select(UserModel)
+            .options(selectinload(UserModel.permissions))
+            .where(UserModel.id == current_user["id"])
+        )
         user = result.scalar_one_or_none()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        return {"id": user.id, "email": user.email, "name": user.name, "role": user.role}
+        
+        # Format permissions array
+        permissions = [
+            {
+                "id": perm.id,
+                "action": perm.action,
+                "scope": perm.scope,
+                "namespace": perm.namespace,
+                "object_name": perm.object_name
+            }
+            for perm in user.permissions
+        ]
+        
+        return {
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "role": user.role,
+            "auth_provider": user.auth_provider,
+            "permissions": permissions
+        }
 
 
 @api_router.post("/auth/logout", tags=["Authentication"])
@@ -398,36 +506,186 @@ async def logout(response: Response):
 
 # ============ SCALED OBJECT ROUTES (via K8s Service) ============
 @api_router.get("/scaled-objects", tags=["ScaledObjects"])
-async def list_scaled_objects(namespace: Optional[str] = None, scaler_type: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+async def list_scaled_objects(namespace: Optional[str] = None, scaler_type: Optional[str] = None, current_user: dict = Depends(get_current_user_with_permissions)):
     try:
-        return await k8s_service.list_objects(namespace=namespace, scaler_type=scaler_type)
+        # Import RBACEngine here to avoid circular dependencies
+        from backend.rbac.engine import RBACEngine
+        
+        # Get all objects from k8s service
+        objects = await k8s_service.list_objects(namespace=namespace, scaler_type=scaler_type)
+        
+        # Initialize RBAC engine
+        rbac_engine = RBACEngine(
+            async_session_maker=async_session_maker,
+            user_model=UserModel,
+            permission_model=PermissionModel
+        )
+        
+        # Filter objects by read permission
+        filtered_objects = await rbac_engine.filter_objects_by_permission(
+            user_id=current_user["id"],
+            objects=objects,
+            action="read"
+        )
+        
+        return filtered_objects
     except Exception as e:
         logger.error(f"Failed to list ScaledObjects: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list ScaledObjects: {str(e)}")
 
 
 @api_router.post("/scaled-objects", tags=["ScaledObjects"])
-async def create_scaled_object(data: ScaledObjectCreate, current_user: dict = Depends(get_current_user)):
+async def create_scaled_object(data: ScaledObjectCreate, current_user: dict = Depends(get_current_user_with_permissions)):
     try:
+        # Import RBACEngine here to avoid circular dependencies
+        from backend.rbac.engine import RBACEngine
+        
+        # Initialize RBAC engine
+        rbac_engine = RBACEngine(
+            async_session_maker=async_session_maker,
+            user_model=UserModel,
+            permission_model=PermissionModel
+        )
+        
+        # Check namespace write permission
+        has_permission = await rbac_engine.check_permission(
+            user_id=current_user["id"],
+            action="write",
+            resource_type="scaledobject",
+            namespace=data.namespace
+        )
+        
+        if not has_permission:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "message": "Insufficient permissions",
+                    "required": {
+                        "action": "write",
+                        "resource_type": "scaledobject",
+                        "namespace": data.namespace
+                    }
+                }
+            )
+        
         result = await k8s_service.create_object(data.model_dump())
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to create ScaledObject: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create ScaledObject: {str(e)}")
 
 
 @api_router.get("/scaled-objects/{obj_id:path}", tags=["ScaledObjects"])
-async def get_scaled_object(obj_id: str, current_user: dict = Depends(get_current_user)):
-    result = await k8s_service.get_object(obj_id)
-    if not result:
-        raise HTTPException(status_code=404, detail="ScaledObject not found")
+async def get_scaled_object(obj_id: str, current_user: dict = Depends(get_current_user_with_permissions)):
+    # Import RBACEngine here to avoid circular dependencies
+    from backend.rbac.engine import RBACEngine
+    
+    # Parse obj_id to extract namespace and name
+    # Format can be "namespace/name" or UUID
+    if "/" in obj_id:
+        parts = obj_id.split("/", 1)
+        namespace = parts[0]
+        name = parts[1]
+    else:
+        # If it's a UUID, we need to get the object first to extract namespace/name
+        result = await k8s_service.get_object(obj_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="ScaledObject not found")
+        namespace = result.get("namespace")
+        name = result.get("name")
+    
+    # Initialize RBAC engine
+    rbac_engine = RBACEngine(
+        async_session_maker=async_session_maker,
+        user_model=UserModel,
+        permission_model=PermissionModel
+    )
+    
+    # Check read permission
+    has_permission = await rbac_engine.check_permission(
+        user_id=current_user["id"],
+        action="read",
+        resource_type="scaledobject",
+        namespace=namespace,
+        object_name=name
+    )
+    
+    if not has_permission:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": "Insufficient permissions",
+                "required": {
+                    "action": "read",
+                    "resource_type": "scaledobject",
+                    "namespace": namespace,
+                    "object_name": name
+                }
+            }
+        )
+    
+    # Get the object (we may have already fetched it above)
+    if "/" in obj_id:
+        result = await k8s_service.get_object(obj_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="ScaledObject not found")
+    
     return result
 
 
 @api_router.put("/scaled-objects/{obj_id:path}", tags=["ScaledObjects"])
-async def update_scaled_object(obj_id: str, data: ScaledObjectUpdate, current_user: dict = Depends(get_current_user)):
+async def update_scaled_object(obj_id: str, data: ScaledObjectUpdate, current_user: dict = Depends(get_current_user_with_permissions)):
     # DEBUG: Log raw request data
     logger.info(f"[DEBUG] PUT /scaled-objects/{obj_id} - Raw Pydantic model: {data}")
+    
+    # Import RBACEngine here to avoid circular dependencies
+    from backend.rbac.engine import RBACEngine
+    
+    # Parse obj_id to extract namespace and name
+    # Format can be "namespace/name" or UUID
+    if "/" in obj_id:
+        parts = obj_id.split("/", 1)
+        namespace = parts[0]
+        name = parts[1]
+    else:
+        # If it's a UUID, we need to get the object first to extract namespace/name
+        result = await k8s_service.get_object(obj_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="ScaledObject not found")
+        namespace = result.get("namespace")
+        name = result.get("name")
+    
+    # Initialize RBAC engine
+    rbac_engine = RBACEngine(
+        async_session_maker=async_session_maker,
+        user_model=UserModel,
+        permission_model=PermissionModel
+    )
+    
+    # Check write permission
+    has_permission = await rbac_engine.check_permission(
+        user_id=current_user["id"],
+        action="write",
+        resource_type="scaledobject",
+        namespace=namespace,
+        object_name=name
+    )
+    
+    if not has_permission:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": "Insufficient permissions",
+                "required": {
+                    "action": "write",
+                    "resource_type": "scaledobject",
+                    "namespace": namespace,
+                    "object_name": name
+                }
+            }
+        )
     
     update_data = data.model_dump(exclude_unset=True)
     logger.info(f"[DEBUG] model_dump(exclude_unset=True) keys: {list(update_data.keys())}")
@@ -464,8 +722,55 @@ async def update_scaled_object(obj_id: str, data: ScaledObjectUpdate, current_us
 
 
 @api_router.delete("/scaled-objects/{obj_id:path}", tags=["ScaledObjects"])
-async def delete_scaled_object(obj_id: str, current_user: dict = Depends(get_current_user)):
+async def delete_scaled_object(obj_id: str, current_user: dict = Depends(get_current_user_with_permissions)):
     try:
+        # Import RBACEngine here to avoid circular dependencies
+        from backend.rbac.engine import RBACEngine
+        
+        # Parse obj_id to extract namespace and name
+        # Format can be "namespace/name" or UUID
+        if "/" in obj_id:
+            parts = obj_id.split("/", 1)
+            namespace = parts[0]
+            name = parts[1]
+        else:
+            # If it's a UUID, we need to get the object first to extract namespace/name
+            result = await k8s_service.get_object(obj_id)
+            if not result:
+                raise HTTPException(status_code=404, detail="ScaledObject not found")
+            namespace = result.get("namespace")
+            name = result.get("name")
+        
+        # Initialize RBAC engine
+        rbac_engine = RBACEngine(
+            async_session_maker=async_session_maker,
+            user_model=UserModel,
+            permission_model=PermissionModel
+        )
+        
+        # Check write permission
+        has_permission = await rbac_engine.check_permission(
+            user_id=current_user["id"],
+            action="write",
+            resource_type="scaledobject",
+            namespace=namespace,
+            object_name=name
+        )
+        
+        if not has_permission:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "message": "Insufficient permissions",
+                    "required": {
+                        "action": "write",
+                        "resource_type": "scaledobject",
+                        "namespace": namespace,
+                        "object_name": name
+                    }
+                }
+            )
+        
         result = await k8s_service.delete_object(obj_id)
         if not result:
             raise HTTPException(status_code=404, detail="ScaledObject not found")
@@ -628,6 +933,27 @@ async def health():
 
 
 # ============ INCLUDE ROUTER + MIDDLEWARE ============
+# Import auth router after models are defined (to avoid circular imports)
+from backend.auth.auth_router import router as auth_router
+
+# Import permissions router
+from backend.permissions.router import router as permissions_router, initialize_permissions_router
+from backend.rbac.engine import RBACEngine
+
+# Initialize permissions router with dependencies
+initialize_permissions_router(
+    async_session_maker=async_session_maker,
+    user_model=UserModel,
+    permission_model=PermissionModel,
+    scaled_object_model=ScaledObjectModel,
+    permission_schema=Permission,
+    permission_create_schema=PermissionCreate,
+    get_current_user=get_current_user,
+    rbac_engine_class=RBACEngine
+)
+
+app.include_router(auth_router)
+app.include_router(permissions_router)
 app.include_router(api_router)
 
 app.add_middleware(

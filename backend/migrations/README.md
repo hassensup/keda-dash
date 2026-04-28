@@ -25,6 +25,8 @@ sqlite3 keda_dashboard.db < 001_add_scaling_behavior.sql
 ## Migration List
 
 - **001_add_scaling_behavior.sql**: Adds `scaling_behavior_json` column to `scaled_objects` table for optional scale-up/scale-down policies configuration.
+- **002_add_auth_fields.sql**: Extends `users` table to support dual authentication providers (local and Okta SSO). Adds `auth_provider` and `okta_subject` columns, makes `password_hash` nullable, and backfills existing users as 'local' provider.
+- **003_create_permissions_table.sql**: Creates `permissions` table for fine-grained RBAC on ScaledObjects. Includes foreign key to users table with CASCADE delete, indexes for efficient lookups, and unique constraint to prevent duplicate permissions.
 
 ## Creating New Migrations
 
