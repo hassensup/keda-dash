@@ -65,43 +65,108 @@ const SCALER_FIELDS = {
 const SCALER_TYPE_LIST = Object.keys(SCALER_FIELDS);
 
 export default function ScaledObjectDetailPage() {
-  const { id } = useParams();
+  const { "*" : id } = useParams();
   const isNew = id === "new";
   const navigate = useNavigate();
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
+  const [namespaces, setNamespaces] = useState([]);
+  const [deployments, setDeployments] = useState([]);
+  const [selectedTriggerType, setSelectedTriggerType] = useState("cron");
   const [form, setForm] = useState({
     name: "", namespace: "default", scaler_type: "cron",
     target_deployment: "", min_replicas: 0, max_replicas: 10,
     cooldown_period: 300, polling_interval: 30, triggers: [], status: "Active",
+    scaling_behavior: {
+      scale_up: null,
+      scale_down: null,
+    }
   });
+
+  useEffect(() => {
+    const fetchNamespaces = async () => {
+      try {
+        const nsRes = await api.get("/namespaces");
+        setNamespaces(nsRes.data);
+      } catch (err) {
+        console.error("Failed to fetch namespaces:", err);
+      }
+    };
+    fetchNamespaces();
+  }, []);
+
+  useEffect(() => {
+    const fetchDeployments = async () => {
+      try {
+        const params = form.namespace ? { namespace: form.namespace } : {};
+        const depRes = await api.get("/deployments", { params });
+        setDeployments(depRes.data);
+      } catch (err) {
+        console.error("Failed to fetch deployments:", err);
+        setDeployments([]);
+      }
+    };
+    if (form.namespace) {
+      fetchDeployments();
+    }
+  }, [form.namespace]);
 
   useEffect(() => {
     if (!isNew) {
       api.get(`/scaled-objects/${id}`)
-        .then(({ data }) => setForm(data))
+        .then(({ data }) => {
+          console.log("ScaledObject data:", data);
+          console.log("Triggers:", data.triggers);
+          // Initialiser scaling_behavior avec la structure correcte si null
+          if (!data.scaling_behavior) {
+            data.scaling_behavior = {
+              scale_up: null,
+              scale_down: null,
+            };
+          }
+          setForm(data);
+        })
         .catch(() => { toast.error("Not found"); navigate("/"); })
         .finally(() => setLoading(false));
     }
   }, [id, isNew, navigate]);
 
-  const updateField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+  const updateField = (key, value) => {
+    setForm((prev) => {
+      const updated = { ...prev, [key]: value };
+      // Si on change le namespace, réinitialiser le target_deployment
+      if (key === "namespace" && value !== prev.namespace) {
+        updated.target_deployment = "";
+      }
+      return updated;
+    });
+  };
 
-  const updateTriggerMeta = (idx, metaKey, value) => {
+  const updateTriggerField = (idx, key, value, isMeta = true) => {
     setForm((prev) => {
       const triggers = [...prev.triggers];
-      triggers[idx] = { ...triggers[idx], metadata: { ...triggers[idx].metadata, [metaKey]: value } };
+      if (isMeta) {
+        triggers[idx] = { ...triggers[idx], metadata: { ...triggers[idx].metadata, [key]: value } };
+      } else {
+        triggers[idx] = { ...triggers[idx], [key]: value };
+      }
       return { ...prev, triggers };
     });
   };
 
   const addTrigger = () => {
-    const fields = SCALER_FIELDS[form.scaler_type] || [];
+    const fields = SCALER_FIELDS[selectedTriggerType] || [];
     const metadata = {};
-    fields.forEach((f) => { metadata[f.key] = f.default; });
+    fields.forEach((f) => {
+      if (f.key === "metricType") {
+        // metricType will be handled at the top level of the trigger object
+      } else {
+        metadata[f.key] = f.default;
+      }
+    });
     setForm((prev) => ({
       ...prev,
-      triggers: [...prev.triggers, { type: form.scaler_type, metadata }],
+      triggers: [...prev.triggers, { type: selectedTriggerType, metricType: SCALER_FIELDS[selectedTriggerType]?.find(f => f.key === 'metricType')?.default || "", metadata }],
     }));
   };
 
@@ -112,18 +177,110 @@ export default function ScaledObjectDetailPage() {
     }));
   };
 
+  const toggleScalingBehavior = (type) => {
+    setForm((prev) => ({
+      ...prev,
+      scaling_behavior: {
+        ...prev.scaling_behavior,
+        [type]: prev.scaling_behavior[type] === null ? {
+          stabilization_window_seconds: 300,
+          select_policy: "Max",
+          policies: []
+        } : null
+      }
+    }));
+  };
+
+  const updateScalingBehaviorField = (type, field, value) => {
+    setForm((prev) => ({
+      ...prev,
+      scaling_behavior: {
+        ...prev.scaling_behavior,
+        [type]: {
+          ...prev.scaling_behavior[type],
+          [field]: value
+        }
+      }
+    }));
+  };
+
+  const addScalingPolicy = (type) => {
+    setForm((prev) => ({
+      ...prev,
+      scaling_behavior: {
+        ...prev.scaling_behavior,
+        [type]: {
+          ...prev.scaling_behavior[type],
+          policies: [
+            ...prev.scaling_behavior[type].policies,
+            { type: "Percent", value: 100, period_seconds: 15 }
+          ]
+        }
+      }
+    }));
+  };
+
+  const removeScalingPolicy = (type, idx) => {
+    setForm((prev) => ({
+      ...prev,
+      scaling_behavior: {
+        ...prev.scaling_behavior,
+        [type]: {
+          ...prev.scaling_behavior[type],
+          policies: prev.scaling_behavior[type].policies.filter((_, i) => i !== idx)
+        }
+      }
+    }));
+  };
+
+  const updateScalingPolicy = (type, idx, field, value) => {
+    setForm((prev) => ({
+      ...prev,
+      scaling_behavior: {
+        ...prev.scaling_behavior,
+        [type]: {
+          ...prev.scaling_behavior[type],
+          policies: prev.scaling_behavior[type].policies.map((p, i) => 
+            i === idx ? { ...p, [field]: value } : p
+          )
+        }
+      }
+    }));
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Préparer les données à envoyer
+      const dataToSend = { ...form };
+      
+      // Nettoyer le scaling_behavior si les deux sont null
+      if (dataToSend.scaling_behavior) {
+        if (!dataToSend.scaling_behavior.scale_up && !dataToSend.scaling_behavior.scale_down) {
+          dataToSend.scaling_behavior = null;
+        }
+      }
+      
+      console.log("[DEBUG Frontend] Saving with data:", {
+        hasScalingBehavior: !!dataToSend.scaling_behavior,
+        hasTriggers: !!dataToSend.triggers,
+        scalingBehavior: dataToSend.scaling_behavior,
+        triggers: dataToSend.triggers?.length
+      });
+      
       if (isNew) {
-        await api.post("/scaled-objects", form);
+        await api.post("/scaled-objects", dataToSend);
         toast.success("ScaledObject created");
       } else {
-        await api.put(`/scaled-objects/${id}`, form);
+        const { id: _id, ...updateData } = dataToSend;
+        console.log("[DEBUG Frontend] Update data keys:", Object.keys(updateData));
+        console.log("[DEBUG Frontend] scaling_behavior in updateData:", 'scaling_behavior' in updateData);
+        await api.put(`/scaled-objects/${id}`, updateData);
         toast.success("ScaledObject updated");
       }
       navigate("/");
     } catch (err) {
+      console.error("[DEBUG Frontend] Save error:", err);
       toast.error(err.response?.data?.detail || "Save failed");
     } finally {
       setSaving(false);
@@ -144,9 +301,19 @@ export default function ScaledObjectDetailPage() {
             {isNew ? "New ScaledObject" : form.name}
           </h1>
           {!isNew && (
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
               <Badge variant="outline" className="font-mono text-xs">{form.namespace}</Badge>
-              <Badge variant="outline" className="text-xs">{form.scaler_type}</Badge>
+              {(() => {
+                const uniqueTypes = form.triggers.length > 0 
+                  ? [...new Set(form.triggers.map(t => t.type))]
+                  : [form.scaler_type];
+                console.log("Unique scaler types:", uniqueTypes);
+                return uniqueTypes.map((type, idx) => (
+                  <Badge key={idx} variant="outline" className="text-xs capitalize">
+                    {type}
+                  </Badge>
+                ));
+              })()}
             </div>
           )}
         </div>
@@ -168,20 +335,59 @@ export default function ScaledObjectDetailPage() {
           <div className="bg-white border border-slate-200 rounded-md p-6 space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <FormField label="Name" value={form.name} onChange={(v) => updateField("name", v)} testId="field-name" mono />
-              <FormField label="Namespace" value={form.namespace} onChange={(v) => updateField("namespace", v)} testId="field-namespace" mono />
-              <FormField label="Target Deployment" value={form.target_deployment} onChange={(v) => updateField("target_deployment", v)} testId="field-target" mono />
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Scaler Type</Label>
-                <Select value={form.scaler_type} onValueChange={(v) => updateField("scaler_type", v)}>
-                  <SelectTrigger data-testid="field-scaler-type" className="h-9 font-mono text-sm">
-                    <SelectValue />
+                <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Namespace</Label>
+                <Select value={form.namespace} onValueChange={(v) => updateField("namespace", v)}>
+                  <SelectTrigger data-testid="field-namespace" className="h-9 font-mono text-sm">
+                    <SelectValue placeholder="Select namespace" />
                   </SelectTrigger>
                   <SelectContent>
-                    {SCALER_TYPE_LIST.map((t) => (
-                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    {namespaces.length === 0 && (
+                      <SelectItem value="default">default</SelectItem>
+                    )}
+                    {namespaces.map((ns) => (
+                      <SelectItem key={ns} value={ns}>{ns}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Target Deployment</Label>
+                <Select 
+                  value={form.target_deployment} 
+                  onValueChange={(v) => updateField("target_deployment", v)}
+                >
+                  <SelectTrigger data-testid="field-target" className="h-9 font-mono text-sm">
+                    <SelectValue placeholder="Select deployment" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {deployments.length === 0 && (
+                      <div className="px-2 py-1.5 text-xs text-slate-400 text-center">
+                        {!form.namespace ? "Select a namespace first" : "No deployments found"}
+                      </div>
+                    )}
+                    {form.target_deployment && !deployments.includes(form.target_deployment) && (
+                      <SelectItem value={form.target_deployment}>{form.target_deployment}</SelectItem>
+                    )}
+                    {deployments.map((dep) => (
+                      <SelectItem key={dep} value={dep}>{dep}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Scaler Types</Label>
+                <div className="flex flex-wrap gap-2 min-h-[36px] items-center border border-slate-200 rounded-md px-3 py-2 bg-slate-50">
+                  {form.triggers.length > 0 ? (
+                    [...new Set(form.triggers.map(t => t.type))].map((type, idx) => (
+                      <Badge key={idx} variant="secondary" className="text-xs font-mono capitalize">
+                        {type}
+                      </Badge>
+                    ))
+                  ) : (
+                    <span className="text-xs text-slate-400">No triggers configured</span>
+                  )}
+                </div>
               </div>
               {!isNew && (
                 <div className="space-y-1.5">
@@ -203,25 +409,259 @@ export default function ScaledObjectDetailPage() {
         </TabsContent>
 
         <TabsContent value="scaling">
-          <div className="bg-white border border-slate-200 rounded-md p-6">
-            <div className="grid grid-cols-2 gap-4">
-              <NumField label="Min Replicas" value={form.min_replicas} onChange={(v) => updateField("min_replicas", v)} testId="field-min-replicas" />
-              <NumField label="Max Replicas" value={form.max_replicas} onChange={(v) => updateField("max_replicas", v)} testId="field-max-replicas" />
-              <NumField label="Cooldown Period (s)" value={form.cooldown_period} onChange={(v) => updateField("cooldown_period", v)} testId="field-cooldown" />
-              <NumField label="Polling Interval (s)" value={form.polling_interval} onChange={(v) => updateField("polling_interval", v)} testId="field-polling" />
+          <div className="space-y-4">
+            {/* Basic Scaling Parameters */}
+            <div className="bg-white border border-slate-200 rounded-md p-6">
+              <h3 className="text-sm font-semibold text-slate-700 mb-4">Basic Parameters</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <NumField label="Min Replicas" value={form.min_replicas} onChange={(v) => updateField("min_replicas", v)} testId="field-min-replicas" />
+                <NumField label="Max Replicas" value={form.max_replicas} onChange={(v) => updateField("max_replicas", v)} testId="field-max-replicas" />
+                <NumField label="Cooldown Period (s)" value={form.cooldown_period} onChange={(v) => updateField("cooldown_period", v)} testId="field-cooldown" />
+                <NumField label="Polling Interval (s)" value={form.polling_interval} onChange={(v) => updateField("polling_interval", v)} testId="field-polling" />
+              </div>
+            </div>
+
+            {/* Scaling Behavior */}
+            <div className="bg-white border border-slate-200 rounded-md p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700">Scaling Behavior</h3>
+                  <p className="text-xs text-slate-500 mt-1">Optional advanced scaling policies</p>
+                </div>
+              </div>
+
+              {/* Scale Up */}
+              <div className="border border-slate-200 rounded-md p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Scale Up Behavior</Label>
+                  <Button 
+                    variant={form.scaling_behavior.scale_up ? "destructive" : "outline"} 
+                    size="sm" 
+                    onClick={() => toggleScalingBehavior("scale_up")}
+                    data-testid="toggle-scale-up"
+                  >
+                    {form.scaling_behavior.scale_up ? "Remove" : "Add"}
+                  </Button>
+                </div>
+                
+                {form.scaling_behavior.scale_up && (
+                  <div className="space-y-3 pt-2">
+                    <div className="grid grid-cols-2 gap-3">
+                      <NumField 
+                        label="Stabilization Window (s)" 
+                        value={form.scaling_behavior.scale_up.stabilization_window_seconds} 
+                        onChange={(v) => updateScalingBehaviorField("scale_up", "stabilization_window_seconds", v)} 
+                        testId="scale-up-stabilization"
+                      />
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Select Policy</Label>
+                        <Select 
+                          value={form.scaling_behavior.scale_up.select_policy} 
+                          onValueChange={(v) => updateScalingBehaviorField("scale_up", "select_policy", v)}
+                        >
+                          <SelectTrigger className="h-9" data-testid="scale-up-select-policy">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Max">Max</SelectItem>
+                            <SelectItem value="Min">Min</SelectItem>
+                            <SelectItem value="Disabled">Disabled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Policies</Label>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => addScalingPolicy("scale_up")}
+                          data-testid="add-scale-up-policy"
+                        >
+                          <Plus className="w-3.5 h-3.5 mr-1.5" /> Add Policy
+                        </Button>
+                      </div>
+                      {form.scaling_behavior.scale_up.policies.map((policy, idx) => (
+                        <div key={idx} className="grid grid-cols-4 gap-2 items-end p-2 bg-slate-50 rounded border border-slate-200">
+                          <div className="space-y-1">
+                            <Label className="text-xs text-slate-500">Type</Label>
+                            <Select 
+                              value={policy.type} 
+                              onValueChange={(v) => updateScalingPolicy("scale_up", idx, "type", v)}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Percent">Percent</SelectItem>
+                                <SelectItem value="Pods">Pods</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-slate-500">Value</Label>
+                            <Input 
+                              type="number" 
+                              value={policy.value} 
+                              onChange={(e) => updateScalingPolicy("scale_up", idx, "value", parseInt(e.target.value) || 0)}
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-slate-500">Period (s)</Label>
+                            <Input 
+                              type="number" 
+                              value={policy.period_seconds} 
+                              onChange={(e) => updateScalingPolicy("scale_up", idx, "period_seconds", parseInt(e.target.value) || 0)}
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-red-500"
+                            onClick={() => removeScalingPolicy("scale_up", idx)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Scale Down */}
+              <div className="border border-slate-200 rounded-md p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Scale Down Behavior</Label>
+                  <Button 
+                    variant={form.scaling_behavior.scale_down ? "destructive" : "outline"} 
+                    size="sm" 
+                    onClick={() => toggleScalingBehavior("scale_down")}
+                    data-testid="toggle-scale-down"
+                  >
+                    {form.scaling_behavior.scale_down ? "Remove" : "Add"}
+                  </Button>
+                </div>
+                
+                {form.scaling_behavior.scale_down && (
+                  <div className="space-y-3 pt-2">
+                    <div className="grid grid-cols-2 gap-3">
+                      <NumField 
+                        label="Stabilization Window (s)" 
+                        value={form.scaling_behavior.scale_down.stabilization_window_seconds} 
+                        onChange={(v) => updateScalingBehaviorField("scale_down", "stabilization_window_seconds", v)} 
+                        testId="scale-down-stabilization"
+                      />
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Select Policy</Label>
+                        <Select 
+                          value={form.scaling_behavior.scale_down.select_policy} 
+                          onValueChange={(v) => updateScalingBehaviorField("scale_down", "select_policy", v)}
+                        >
+                          <SelectTrigger className="h-9" data-testid="scale-down-select-policy">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Max">Max</SelectItem>
+                            <SelectItem value="Min">Min</SelectItem>
+                            <SelectItem value="Disabled">Disabled</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Policies</Label>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => addScalingPolicy("scale_down")}
+                          data-testid="add-scale-down-policy"
+                        >
+                          <Plus className="w-3.5 h-3.5 mr-1.5" /> Add Policy
+                        </Button>
+                      </div>
+                      {form.scaling_behavior.scale_down.policies.map((policy, idx) => (
+                        <div key={idx} className="grid grid-cols-4 gap-2 items-end p-2 bg-slate-50 rounded border border-slate-200">
+                          <div className="space-y-1">
+                            <Label className="text-xs text-slate-500">Type</Label>
+                            <Select 
+                              value={policy.type} 
+                              onValueChange={(v) => updateScalingPolicy("scale_down", idx, "type", v)}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Percent">Percent</SelectItem>
+                                <SelectItem value="Pods">Pods</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-slate-500">Value</Label>
+                            <Input 
+                              type="number" 
+                              value={policy.value} 
+                              onChange={(e) => updateScalingPolicy("scale_down", idx, "value", parseInt(e.target.value) || 0)}
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-slate-500">Period (s)</Label>
+                            <Input 
+                              type="number" 
+                              value={policy.period_seconds} 
+                              onChange={(e) => updateScalingPolicy("scale_down", idx, "period_seconds", parseInt(e.target.value) || 0)}
+                              className="h-8 text-xs"
+                            />
+                          </div>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-red-500"
+                            onClick={() => removeScalingPolicy("scale_down", idx)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </TabsContent>
 
         <TabsContent value="triggers">
           <div className="bg-white border border-slate-200 rounded-md p-6 space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">
                 Triggers ({form.triggers.length})
               </p>
-              <Button variant="outline" size="sm" onClick={addTrigger} data-testid="add-trigger-btn">
-                <Plus className="w-3.5 h-3.5 mr-1.5" /> Add Trigger
-              </Button>
+              <div className="flex items-center gap-2">
+                <Select value={selectedTriggerType} onValueChange={setSelectedTriggerType}>
+                  <SelectTrigger className="w-40 h-8 text-xs" data-testid="trigger-type-select">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(SCALER_FIELDS).map((type) => (
+                      <SelectItem key={type} value={type} className="text-xs capitalize">
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button variant="outline" size="sm" onClick={addTrigger} data-testid="add-trigger-btn">
+                  <Plus className="w-3.5 h-3.5 mr-1.5" /> Add Trigger
+                </Button>
+              </div>
             </div>
             {form.triggers.length === 0 && (
               <p className="text-sm text-slate-400 py-4 text-center">No triggers configured. Add one to get started.</p>
@@ -243,7 +683,7 @@ export default function ScaledObjectDetailPage() {
                           <Label className="text-xs text-slate-500">{field.label}</Label>
                           <Select
                             value={trigger.metadata?.[field.key] || field.default}
-                            onValueChange={(v) => updateTriggerMeta(idx, field.key, v)}
+                            onValueChange={(v) => updateTriggerField(idx, field.key, v)}
                           >
                             <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                             <SelectContent>
@@ -258,7 +698,7 @@ export default function ScaledObjectDetailPage() {
                           <Label className="text-xs text-slate-500">{field.label}</Label>
                           <Input
                             value={trigger.metadata?.[field.key] || ""}
-                            onChange={(e) => updateTriggerMeta(idx, field.key, e.target.value)}
+                            onChange={(e) => updateTriggerField(idx, field.key, e.target.value)}
                             className={`h-8 text-xs ${field.mono ? "font-mono" : ""}`}
                             data-testid={`trigger-${idx}-${field.key}`}
                           />

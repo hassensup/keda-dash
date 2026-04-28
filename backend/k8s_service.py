@@ -56,6 +56,10 @@ class K8sScaledObjectService(ABC):
         pass
 
     @abstractmethod
+    async def list_deployments(self, namespace=None) -> list:
+        pass
+
+    @abstractmethod
     def get_mode(self) -> str:
         pass
 
@@ -100,12 +104,17 @@ class MockK8sService(K8sScaledObjectService):
 
     async def create_object(self, data: dict) -> dict:
         async with self._session_maker() as session:
+            scaling_behavior_json = None
+            if data.get("scaling_behavior"):
+                scaling_behavior_json = json.dumps(data["scaling_behavior"])
+            
             obj = self._ScaledObjectModel(
                 name=data["name"], namespace=data.get("namespace", "default"),
                 scaler_type=data["scaler_type"], target_deployment=data["target_deployment"],
                 min_replicas=data.get("min_replicas", 0), max_replicas=data.get("max_replicas", 10),
                 cooldown_period=data.get("cooldown_period", 300), polling_interval=data.get("polling_interval", 30),
                 triggers_json=json.dumps(data.get("triggers", [])),
+                scaling_behavior_json=scaling_behavior_json,
             )
             session.add(obj)
             await session.commit()
@@ -120,12 +129,26 @@ class MockK8sService(K8sScaledObjectService):
             obj = result.scalar_one_or_none()
             if not obj:
                 return None
+
+            logger.info(f"Updating ScaledObject {obj_id} with data: {data}")
+
             if "triggers" in data:
                 data["triggers_json"] = json.dumps(data.pop("triggers"))
+            
+            if "scaling_behavior" in data:
+                if data["scaling_behavior"]:
+                    data["scaling_behavior_json"] = json.dumps(data.pop("scaling_behavior"))
+                else:
+                    data["scaling_behavior_json"] = None
+                    data.pop("scaling_behavior")
+
             data["updated_at"] = datetime.now(timezone.utc)
+
             for key, value in data.items():
                 if hasattr(obj, key):
+                    logger.debug(f"Setting {key} = {value}")
                     setattr(obj, key, value)
+
             await session.commit()
             await session.refresh(obj)
             return self._to_dict(obj)
@@ -156,7 +179,22 @@ class MockK8sService(K8sScaledObjectService):
             )
             return [row[0] for row in result.all()]
 
+    async def list_deployments(self, namespace=None) -> list:
+        async with self._session_maker() as session:
+            query = self._select(self._ScaledObjectModel.target_deployment).distinct()
+            if namespace:
+                query = query.where(self._ScaledObjectModel.namespace == namespace)
+            result = await session.execute(query)
+            return [row[0] for row in result.all()]
+
     def _to_dict(self, obj):
+        scaling_behavior = None
+        if hasattr(obj, 'scaling_behavior_json') and obj.scaling_behavior_json:
+            try:
+                scaling_behavior = json.loads(obj.scaling_behavior_json)
+            except:
+                scaling_behavior = None
+        
         return {
             "id": obj.id,
             "name": obj.name,
@@ -168,6 +206,7 @@ class MockK8sService(K8sScaledObjectService):
             "cooldown_period": obj.cooldown_period,
             "polling_interval": obj.polling_interval,
             "triggers": json.loads(obj.triggers_json) if obj.triggers_json else [],
+            "scaling_behavior": scaling_behavior,
             "status": obj.status,
             "created_at": obj.created_at.isoformat() if obj.created_at else "",
             "updated_at": obj.updated_at.isoformat() if obj.updated_at else "",
@@ -181,6 +220,7 @@ class RealK8sService(K8sScaledObjectService):
         self._connected = False
         self._custom_api = None
         self._core_api = None
+        self._apps_api = None
         self._init_client()
 
     def _init_client(self):
@@ -198,6 +238,7 @@ class RealK8sService(K8sScaledObjectService):
                     return
             self._custom_api = client.CustomObjectsApi()
             self._core_api = client.CoreV1Api()
+            self._apps_api = client.AppsV1Api()
             self._connected = True
             logger.info("K8s: Client initialized successfully")
         except Exception as e:
@@ -259,6 +300,11 @@ class RealK8sService(K8sScaledObjectService):
         return self._crd_to_dict(result)
 
     async def update_object(self, obj_id: str, data: dict) -> dict:
+        logger.info(f"[DEBUG K8s] update_object called with obj_id={obj_id}")
+        logger.info(f"[DEBUG K8s] data keys: {list(data.keys())}")
+        logger.info(f"[DEBUG K8s] 'scaling_behavior' in data: {'scaling_behavior' in data}")
+        logger.info(f"[DEBUG K8s] 'triggers' in data: {'triggers' in data}")
+        
         ns, name = self._parse_id(obj_id)
 
         def _update():
@@ -280,8 +326,100 @@ class RealK8sService(K8sScaledObjectService):
                 spec["pollingInterval"] = data["polling_interval"]
             if "triggers" in data:
                 spec["triggers"] = data["triggers"]
+            
+            # Handle scaling behavior
+            logger.info(f"[DEBUG K8s] About to check scaling_behavior. 'scaling_behavior' in data: {'scaling_behavior' in data}")
+            if "scaling_behavior" in data:
+                scaling_behavior = data["scaling_behavior"]
+                logger.info(f"[DEBUG K8s] scaling_behavior value: {scaling_behavior}")
+                logger.info(f"[DEBUG K8s] scaling_behavior type: {type(scaling_behavior)}")
+                logger.info(f"[DEBUG K8s] scaling_behavior is truthy: {bool(scaling_behavior)}")
+                
+                if scaling_behavior:
+                    logger.info("[DEBUG K8s] Inside scaling_behavior truthy block")
+                    behavior = {}
+                    
+                    scale_up_value = scaling_behavior.get("scale_up")
+                    logger.info(f"[DEBUG K8s] scale_up_value: {scale_up_value}")
+                    logger.info(f"[DEBUG K8s] scale_up_value type: {type(scale_up_value)}")
+                    logger.info(f"[DEBUG K8s] scale_up_value is truthy: {bool(scale_up_value)}")
+                    
+                    if scale_up_value:
+                        logger.info("[DEBUG K8s] Inside scale_up block - creating scaleUp")
+                        scale_up = scaling_behavior["scale_up"]
+                        behavior["scaleUp"] = {
+                            "stabilizationWindowSeconds": scale_up.get("stabilization_window_seconds", 300),
+                            "selectPolicy": scale_up.get("select_policy", "Max"),
+                            "policies": [
+                                {
+                                    "type": p.get("type", "Percent"),
+                                    "value": p.get("value", 100),
+                                    "periodSeconds": p.get("period_seconds", 15)
+                                }
+                                for p in scale_up.get("policies", [])
+                            ]
+                        }
+                        logger.info(f"[DEBUG K8s] Created scaleUp: {behavior['scaleUp']}")
+                    else:
+                        logger.info("[DEBUG K8s] scale_up_value is falsy - skipping scaleUp")
+                    
+                    scale_down_value = scaling_behavior.get("scale_down")
+                    logger.info(f"[DEBUG K8s] scale_down_value: {scale_down_value}")
+                    logger.info(f"[DEBUG K8s] scale_down_value type: {type(scale_down_value)}")
+                    logger.info(f"[DEBUG K8s] scale_down_value is truthy: {bool(scale_down_value)}")
+                    
+                    if scale_down_value:
+                        scale_down = scaling_behavior["scale_down"]
+                        behavior["scaleDown"] = {
+                            "stabilizationWindowSeconds": scale_down.get("stabilization_window_seconds", 300),
+                            "selectPolicy": scale_down.get("select_policy", "Max"),
+                            "policies": [
+                                {
+                                    "type": p.get("type", "Percent"),
+                                    "value": p.get("value", 100),
+                                    "periodSeconds": p.get("period_seconds", 15)
+                                }
+                                for p in scale_down.get("policies", [])
+                            ]
+                        }
+                        logger.info(f"[DEBUG K8s] Created scaleDown: {behavior['scaleDown']}")
+                    else:
+                        logger.info("[DEBUG K8s] scale_down_value is falsy - skipping scaleDown")
+                    
+                    logger.info(f"[DEBUG K8s] behavior dict after processing: {behavior}")
+                    logger.info(f"[DEBUG K8s] behavior is truthy: {bool(behavior)}")
+                    
+                    if behavior:
+                        # KEDA requires behavior to be nested under advanced.horizontalPodAutoscalerConfig
+                        if "advanced" not in spec:
+                            spec["advanced"] = {}
+                        if "horizontalPodAutoscalerConfig" not in spec["advanced"]:
+                            spec["advanced"]["horizontalPodAutoscalerConfig"] = {}
+                        spec["advanced"]["horizontalPodAutoscalerConfig"]["behavior"] = behavior
+                        logger.info(f"[DEBUG K8s] Added behavior to spec.advanced.horizontalPodAutoscalerConfig: {behavior}")
+                    else:
+                        # Remove behavior if both scale_up and scale_down are null
+                        if "advanced" in spec and "horizontalPodAutoscalerConfig" in spec["advanced"]:
+                            spec["advanced"]["horizontalPodAutoscalerConfig"].pop("behavior", None)
+                        logger.info("[DEBUG K8s] Removed behavior (both null - behavior dict is empty)")
+                else:
+                    # Remove behavior if scaling_behavior is null
+                    if "advanced" in spec and "horizontalPodAutoscalerConfig" in spec["advanced"]:
+                        spec["advanced"]["horizontalPodAutoscalerConfig"].pop("behavior", None)
+                    logger.info("[DEBUG K8s] Removed behavior (scaling_behavior is falsy)")
+            else:
+                logger.warning("[DEBUG K8s] scaling_behavior NOT in data - will not update behavior!")
 
             existing["spec"] = spec
+            logger.info(f"[DEBUG K8s] Final spec has 'behavior': {'behavior' in spec}")
+            if 'behavior' in spec:
+                logger.info(f"[DEBUG K8s] Final spec['behavior']: {spec['behavior']}")
+            
+            # Log the complete body being sent to Kubernetes
+            import json as json_module
+            logger.info(f"[DEBUG K8s] Complete body being sent to K8s API:")
+            logger.info(json_module.dumps(existing, indent=2, default=str))
+            logger.info(f"[DEBUG K8s] About to send update to Kubernetes API")
 
             # Handle name/namespace change via delete + recreate
             new_name = data.get("name", name)
@@ -300,12 +438,15 @@ class RealK8sService(K8sScaledObjectService):
                     namespace=new_ns, plural=KEDA_PLURAL, body=existing
                 )
             else:
-                return self._custom_api.replace_namespaced_custom_object(
+                result = self._custom_api.replace_namespaced_custom_object(
                     group=KEDA_GROUP, version=KEDA_VERSION,
                     namespace=ns, plural=KEDA_PLURAL, name=name, body=existing
                 )
+                logger.info(f"[DEBUG K8s] Kubernetes API update completed successfully")
+                return result
 
         result = await asyncio.to_thread(_update)
+        logger.info(f"[DEBUG K8s] _update thread completed, converting result back to dict")
         return self._crd_to_dict(result)
 
     async def delete_object(self, obj_id: str) -> dict:
@@ -333,6 +474,20 @@ class RealK8sService(K8sScaledObjectService):
         for obj in objects:
             types.add(obj["scaler_type"])
         return sorted(list(types))
+
+    async def list_deployments(self, namespace=None) -> list:
+        def _list():
+            if namespace:
+                resp = self._apps_api.list_namespaced_deployment(namespace=namespace)
+            else:
+                resp = self._apps_api.list_deployment_for_all_namespaces()
+            return [d.metadata.name for d in resp.items]
+
+        try:
+            return await asyncio.to_thread(_list)
+        except Exception as e:
+            logger.error(f"K8s: Failed to list deployments: {e}")
+            return []
 
     @staticmethod
     def _parse_id(obj_id: str):
@@ -375,6 +530,44 @@ class RealK8sService(K8sScaledObjectService):
         ns = metadata.get("namespace", "default")
         name = metadata.get("name", "")
 
+        # Extract scaling behavior if present
+        scaling_behavior = None
+        # KEDA stores behavior under spec.advanced.horizontalPodAutoscalerConfig.behavior
+        advanced = spec.get("advanced", {})
+        hpa_config = advanced.get("horizontalPodAutoscalerConfig", {})
+        behavior = hpa_config.get("behavior")
+        
+        if behavior:
+            scaling_behavior = {}
+            if "scaleUp" in behavior:
+                scale_up = behavior["scaleUp"]
+                scaling_behavior["scale_up"] = {
+                    "stabilization_window_seconds": scale_up.get("stabilizationWindowSeconds", 300),
+                    "select_policy": scale_up.get("selectPolicy", "Max"),
+                    "policies": [
+                        {
+                            "type": p.get("type", "Percent"),
+                            "value": p.get("value", 100),
+                            "period_seconds": p.get("periodSeconds", 15)
+                        }
+                        for p in scale_up.get("policies", [])
+                    ]
+                }
+            if "scaleDown" in behavior:
+                scale_down = behavior["scaleDown"]
+                scaling_behavior["scale_down"] = {
+                    "stabilization_window_seconds": scale_down.get("stabilizationWindowSeconds", 300),
+                    "select_policy": scale_down.get("selectPolicy", "Max"),
+                    "policies": [
+                        {
+                            "type": p.get("type", "Percent"),
+                            "value": p.get("value", 100),
+                            "period_seconds": p.get("periodSeconds", 15)
+                        }
+                        for p in scale_down.get("policies", [])
+                    ]
+                }
+
         return {
             "id": f"{ns}/{name}",
             "name": name,
@@ -386,6 +579,7 @@ class RealK8sService(K8sScaledObjectService):
             "cooldown_period": spec.get("cooldownPeriod", 300),
             "polling_interval": spec.get("pollingInterval", 30),
             "triggers": triggers,
+            "scaling_behavior": scaling_behavior,
             "status": obj_status,
             "created_at": metadata.get("creationTimestamp", ""),
             "updated_at": metadata.get("creationTimestamp", ""),
@@ -394,6 +588,60 @@ class RealK8sService(K8sScaledObjectService):
     @staticmethod
     def _dict_to_crd(data: dict) -> dict:
         """Convert our API dict to K8s CRD format for create."""
+        spec = {
+            "scaleTargetRef": {
+                "name": data["target_deployment"],
+            },
+            "minReplicaCount": data.get("min_replicas", 0),
+            "maxReplicaCount": data.get("max_replicas", 10),
+            "cooldownPeriod": data.get("cooldown_period", 300),
+            "pollingInterval": data.get("polling_interval", 30),
+            "triggers": data.get("triggers", []),
+        }
+        
+        # Add scaling behavior if present
+        scaling_behavior = data.get("scaling_behavior")
+        if scaling_behavior:
+            behavior = {}
+            
+            if scaling_behavior.get("scale_up"):
+                scale_up = scaling_behavior["scale_up"]
+                behavior["scaleUp"] = {
+                    "stabilizationWindowSeconds": scale_up.get("stabilization_window_seconds", 300),
+                    "selectPolicy": scale_up.get("select_policy", "Max"),
+                    "policies": [
+                        {
+                            "type": p.get("type", "Percent"),
+                            "value": p.get("value", 100),
+                            "periodSeconds": p.get("period_seconds", 15)
+                        }
+                        for p in scale_up.get("policies", [])
+                    ]
+                }
+            
+            if scaling_behavior.get("scale_down"):
+                scale_down = scaling_behavior["scale_down"]
+                behavior["scaleDown"] = {
+                    "stabilizationWindowSeconds": scale_down.get("stabilization_window_seconds", 300),
+                    "selectPolicy": scale_down.get("select_policy", "Max"),
+                    "policies": [
+                        {
+                            "type": p.get("type", "Percent"),
+                            "value": p.get("value", 100),
+                            "periodSeconds": p.get("period_seconds", 15)
+                        }
+                        for p in scale_down.get("policies", [])
+                    ]
+                }
+            
+            if behavior:
+                # KEDA requires behavior to be nested under advanced.horizontalPodAutoscalerConfig
+                spec["advanced"] = {
+                    "horizontalPodAutoscalerConfig": {
+                        "behavior": behavior
+                    }
+                }
+        
         return {
             "apiVersion": f"{KEDA_GROUP}/{KEDA_VERSION}",
             "kind": "ScaledObject",
@@ -401,16 +649,7 @@ class RealK8sService(K8sScaledObjectService):
                 "name": data["name"],
                 "namespace": data.get("namespace", "default"),
             },
-            "spec": {
-                "scaleTargetRef": {
-                    "name": data["target_deployment"],
-                },
-                "minReplicaCount": data.get("min_replicas", 0),
-                "maxReplicaCount": data.get("max_replicas", 10),
-                "cooldownPeriod": data.get("cooldown_period", 300),
-                "pollingInterval": data.get("polling_interval", 30),
-                "triggers": data.get("triggers", []),
-            },
+            "spec": spec,
         }
 
 
