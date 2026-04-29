@@ -23,7 +23,7 @@ import bcrypt
 import jwt as pyjwt
 from datetime import datetime, timezone, timedelta
 from contextlib import asynccontextmanager
-from k8s_service import create_k8s_service, K8sScaledObjectService
+from backend.k8s_service import create_k8s_service, K8sScaledObjectService
 
 # ============ DATABASE ============
 DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite+aiosqlite:///{ROOT_DIR}/keda_dashboard.db")

@@ -30,6 +30,9 @@ COPY backend/ ./backend/
 # Copy frontend build from stage 1
 COPY --from=frontend-build /app/frontend/build ./frontend/build
 
+# Set PYTHONPATH to include /app so backend.* imports work
+ENV PYTHONPATH=/app
+
 # Create a startup script
 RUN echo '#!/bin/bash\ncd /app/backend && uvicorn server:app --host 0.0.0.0 --port 8001' > /app/start.sh && chmod +x /app/start.sh
 
