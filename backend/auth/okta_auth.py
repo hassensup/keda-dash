@@ -306,6 +306,7 @@ class OktaAuthHandler:
         """
         # Import here to avoid circular dependency
         from backend.models import UserModel
+        from sqlalchemy.orm import selectinload
         
         # Extract required claims
         okta_subject = okta_claims.get("sub")
@@ -321,16 +322,20 @@ class OktaAuthHandler:
             raise ValueError("Invalid Okta claims: missing email")
         
         async with self.session_maker() as session:
-            # Try to find existing user by Okta subject
+            # Try to find existing user by Okta subject with eager loading
             result = await session.execute(
-                select(UserModel).where(UserModel.okta_subject == okta_subject)
+                select(UserModel)
+                .options(selectinload(UserModel.permissions))
+                .where(UserModel.okta_subject == okta_subject)
             )
             user = result.scalar_one_or_none()
             
             # If not found by subject, try by email (for account linking)
             if not user:
                 result = await session.execute(
-                    select(UserModel).where(UserModel.email == email.lower())
+                    select(UserModel)
+                    .options(selectinload(UserModel.permissions))
+                    .where(UserModel.email == email.lower())
                 )
                 user = result.scalar_one_or_none()
             
@@ -359,7 +364,15 @@ class OktaAuthHandler:
                 session.add(user)
             
             await session.commit()
+            
+            # Refresh user with permissions eagerly loaded
             await session.refresh(user)
+            result = await session.execute(
+                select(UserModel)
+                .options(selectinload(UserModel.permissions))
+                .where(UserModel.id == user.id)
+            )
+            user = result.scalar_one()
             
             # Load user permissions
             permissions = []

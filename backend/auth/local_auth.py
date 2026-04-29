@@ -140,11 +140,14 @@ class LocalAuthHandler:
         """
         # Import here to avoid circular dependency
         from backend.models import UserModel
+        from sqlalchemy.orm import selectinload
         
         async with self.session_maker() as session:
-            # Query user by email
+            # Query user by email with eager loading of permissions
             result = await session.execute(
-                select(UserModel).where(UserModel.email == email.lower())
+                select(UserModel)
+                .options(selectinload(UserModel.permissions))
+                .where(UserModel.email == email.lower())
             )
             user = result.scalar_one_or_none()
             
