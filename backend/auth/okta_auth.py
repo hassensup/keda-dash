@@ -305,7 +305,7 @@ class OktaAuthHandler:
         Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7
         """
         # Import here to avoid circular dependency
-        from backend.server import UserModel
+        from backend.models import UserModel
         
         # Extract required claims
         okta_subject = okta_claims.get("sub")

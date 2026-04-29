@@ -139,7 +139,7 @@ class LocalAuthHandler:
         Requirements: 1.1, 1.3, 1.6, 11.2
         """
         # Import here to avoid circular dependency
-        from backend.server import UserModel
+        from backend.models import UserModel
         
         async with self.session_maker() as session:
             # Query user by email
@@ -225,7 +225,7 @@ class LocalAuthHandler:
         Requirements: 1.1, 11.1
         """
         # Import here to avoid circular dependency
-        from backend.server import UserModel
+        from backend.models import UserModel
         
         async with self.session_maker() as session:
             # Check if user already exists
