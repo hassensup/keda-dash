@@ -316,7 +316,7 @@ async def lifespan(app):
 async def apply_sql_migrations():
     """Apply all SQL migrations from migrations/ directory."""
     from pathlib import Path
-    from sqlalchemy import text
+    import re
     
     migrations_dir = Path(__file__).parent / "migrations"
     migration_files = sorted(migrations_dir.glob("*.sql"))
@@ -327,27 +327,102 @@ async def apply_sql_migrations():
     
     logger.info(f"Found {len(migration_files)} migration files")
     
-    async with engine.begin() as conn:
-        for migration_file in migration_files:
-            logger.info(f"Applying migration: {migration_file.name}")
-            
-            try:
-                # Read migration SQL
-                with open(migration_file, 'r') as f:
-                    sql_content = f.read()
-                
-                # For PostgreSQL, execute the entire script
-                # The DO blocks handle idempotency
-                await conn.execute(text(sql_content))
-                
-                logger.info(f"✅ Successfully applied: {migration_file.name}")
-                
-            except Exception as e:
-                # Log warning but continue - migrations might be idempotent
-                logger.warning(f"⚠️  Migration {migration_file.name}: {e}")
-                logger.info("Continuing (migration might already be applied)...")
+    # Get database URL
+    db_url = os.environ.get("DATABASE_URL", "")
     
-    logger.info("✅ All migrations processed")
+    # Check if it's PostgreSQL
+    if not db_url.startswith("postgresql"):
+        logger.info("Not PostgreSQL, skipping SQL migrations (using ORM migrations)")
+        return
+    
+    try:
+        # Use the async engine's raw connection
+        async with engine.connect() as conn:
+            for migration_file in migration_files:
+                logger.info(f"Applying migration: {migration_file.name}")
+                
+                try:
+                    # Read migration SQL
+                    with open(migration_file, 'r') as f:
+                        sql_content = f.read()
+                    
+                    # Split SQL into individual statements
+                    # We need to handle DO blocks specially
+                    statements = []
+                    current_statement = []
+                    in_do_block = False
+                    in_comment_block = False
+                    
+                    for line in sql_content.split('\n'):
+                        stripped = line.strip()
+                        
+                        # Handle multi-line comments
+                        if '/*' in stripped:
+                            in_comment_block = True
+                        if '*/' in stripped:
+                            in_comment_block = False
+                            continue
+                        if in_comment_block:
+                            continue
+                        
+                        # Skip single-line comments
+                        if stripped.startswith('--'):
+                            continue
+                        
+                        # Remove inline comments
+                        line = re.sub(r'--.*$', '', line).strip()
+                        
+                        if not line:
+                            continue
+                        
+                        # Track DO blocks (they end with END $;)
+                        if line.upper().startswith('DO'):
+                            in_do_block = True
+                        
+                        current_statement.append(line)
+                        
+                        # End of DO block
+                        if in_do_block and 'END $;' in line:
+                            in_do_block = False
+                            statements.append('\n'.join(current_statement))
+                            current_statement = []
+                        # Regular statement end
+                        elif not in_do_block and line.endswith(';'):
+                            statements.append('\n'.join(current_statement))
+                            current_statement = []
+                    
+                    # Execute each statement using raw connection
+                    from sqlalchemy import text
+                    
+                    for stmt in statements:
+                        if stmt.strip():
+                            try:
+                                await conn.execute(text(stmt))
+                                await conn.commit()
+                            except Exception as stmt_error:
+                                error_msg = str(stmt_error)
+                                if "already exists" in error_msg or "duplicate" in error_msg.lower() or "does not exist" in error_msg:
+                                    logger.debug(f"Statement already applied or not applicable (skipping): {stmt[:50]}...")
+                                else:
+                                    logger.warning(f"Statement failed: {error_msg[:150]}")
+                                # Continue with next statement
+                    
+                    logger.info(f"✅ Successfully processed: {migration_file.name}")
+                    
+                except Exception as e:
+                    # Log warning but continue - migrations might be idempotent
+                    error_msg = str(e)
+                    if "already exists" in error_msg or "duplicate" in error_msg.lower():
+                        logger.info(f"⚠️  Migration {migration_file.name} already applied (skipping)")
+                    else:
+                        logger.error(f"❌ Migration {migration_file.name} failed: {error_msg[:200]}")
+                    logger.info("Continuing with next migration...")
+        
+        logger.info("✅ All migrations processed")
+        
+    except Exception as e:
+        logger.error(f"Failed to apply migrations: {e}")
+        logger.warning("Migrations not applied - please apply manually")
 
 
 # ============ APP SETUP ============

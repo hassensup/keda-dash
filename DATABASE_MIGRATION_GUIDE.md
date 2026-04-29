@@ -26,6 +26,16 @@ async def lifespan(app):
     await seed_data()
 ```
 
+### Approche Technique
+
+La fonction `apply_sql_migrations()` utilise SQLAlchemy avec asyncpg pour exécuter les migrations:
+
+1. **Parse les fichiers SQL** : Lit tous les fichiers `*.sql` dans `backend/migrations/`
+2. **Sépare les statements** : Divise le SQL en statements individuels, en gardant les blocs DO ensemble
+3. **Exécute séquentiellement** : Chaque statement est exécuté avec `conn.execute(text(stmt))`
+4. **Gestion d'erreurs** : Les erreurs "already exists" sont ignorées (migrations idempotentes)
+5. **Continue en cas d'échec** : Si un statement échoue, continue avec le suivant
+
 ### Migrations Disponibles
 
 | Fichier | Description | Statut |
