@@ -17,7 +17,8 @@ from fastapi import APIRouter, Response, HTTPException, Request
 from backend.auth_config import get_auth_config
 from backend.auth.local_auth import LocalAuthHandler
 from backend.auth.okta_auth import OktaAuthHandler
-from backend.server import async_session_maker, LoginRequest
+from backend.database import async_session_maker
+from backend.schemas import LoginRequest
 from backend.audit import logger as audit_logger
 
 logger = logging.getLogger(__name__)

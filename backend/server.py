@@ -8,11 +8,9 @@ from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depend
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from starlette.middleware.cors import CORSMiddleware
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.orm import relationship
 from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey, select, Index
 from sqlalchemy.orm import selectinload
-from pydantic import BaseModel, validator
 from typing import List, Optional
 from enum import Enum
 import os
@@ -25,14 +23,15 @@ from datetime import datetime, timezone, timedelta
 from contextlib import asynccontextmanager
 from backend.k8s_service import create_k8s_service, K8sScaledObjectService
 
-# ============ DATABASE ============
-DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite+aiosqlite:///{ROOT_DIR}/keda_dashboard.db")
-engine = create_async_engine(DATABASE_URL, echo=False)
-async_session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+# Import database components from separate module to avoid circular imports
+from backend.database import engine, async_session_maker, Base
 
-
-class Base(DeclarativeBase):
-    pass
+# Import schemas from separate module to avoid circular imports
+from backend.schemas import (
+    LoginRequest, PermissionAction, PermissionScope, Permission, PermissionCreate,
+    UserProfile, UserWithPermissions, ScaledObjectCreate, ScaledObjectUpdate,
+    CronEventCreate, CronEventUpdate
+)
 
 
 # ============ ORM MODELS ============
@@ -105,112 +104,6 @@ class CronEventModel(Base):
 # Initialize middleware early so get_current_user_with_permissions is available for route decorators
 from backend.rbac.middleware import initialize_middleware, get_current_user_with_permissions
 initialize_middleware(async_session_maker, UserModel, PermissionModel)
-
-
-# ============ PYDANTIC SCHEMAS ============
-class LoginRequest(BaseModel):
-    email: str
-    password: str
-
-
-# Permission Enums
-class PermissionAction(str, Enum):
-    READ = "read"
-    WRITE = "write"
-
-
-class PermissionScope(str, Enum):
-    NAMESPACE = "namespace"
-    OBJECT = "object"
-
-
-# Permission Schemas
-class Permission(BaseModel):
-    id: str
-    user_id: str
-    action: PermissionAction
-    scope: PermissionScope
-    namespace: str
-    object_name: Optional[str] = None
-    created_at: datetime
-    created_by: Optional[str] = None
-
-
-class PermissionCreate(BaseModel):
-    user_id: str
-    action: PermissionAction
-    scope: PermissionScope
-    namespace: str
-    object_name: Optional[str] = None
-    
-    @validator('object_name')
-    def validate_object_name(cls, v, values):
-        if values.get('scope') == PermissionScope.OBJECT and not v:
-            raise ValueError('object_name required for object scope')
-        if values.get('scope') == PermissionScope.NAMESPACE and v:
-            raise ValueError('object_name must be null for namespace scope')
-        return v
-
-
-class UserProfile(BaseModel):
-    id: str
-    email: str
-    name: str
-    role: str
-    auth_provider: str
-    permissions: List[Permission] = []
-
-
-class UserWithPermissions(BaseModel):
-    user: UserProfile
-    permissions: List[Permission]
-
-
-class ScaledObjectCreate(BaseModel):
-    name: str
-    namespace: str = "default"
-    scaler_type: str
-    target_deployment: str
-    min_replicas: int = 0
-    max_replicas: int = 10
-    cooldown_period: int = 300
-    polling_interval: int = 30
-    triggers: list = []
-    scaling_behavior: Optional[dict] = None
-
-
-class ScaledObjectUpdate(BaseModel):
-    name: Optional[str] = None
-    namespace: Optional[str] = None
-    scaler_type: Optional[str] = None
-    target_deployment: Optional[str] = None
-    min_replicas: Optional[int] = None
-    max_replicas: Optional[int] = None
-    cooldown_period: Optional[int] = None
-    polling_interval: Optional[int] = None
-    triggers: Optional[list] = None
-    scaling_behavior: Optional[dict] = None
-    status: Optional[str] = None
-
-
-class CronEventCreate(BaseModel):
-    scaled_object_id: str
-    name: str
-    timezone_str: str = "UTC"
-    desired_replicas: int = 1
-    event_date: str
-    start_time: str = "00:00"
-    end_time: str = "23:59"
-
-
-class CronEventUpdate(BaseModel):
-    name: Optional[str] = None
-    timezone_str: Optional[str] = None
-    desired_replicas: Optional[int] = None
-    event_date: Optional[str] = None
-    start_time: Optional[str] = None
-    end_time: Optional[str] = None
-    scaled_object_id: Optional[str] = None
 
 
 # ============ AUTH UTILITIES ============
