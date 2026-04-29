@@ -59,12 +59,12 @@ spec:
             {{- toYaml .Values.postgresql.resources | nindent 12 }}
           livenessProbe:
             exec:
-              command: ["pg_isready", "-U", {{ .Values.postgresql.auth.username | quote }}]
+              command: ["pg_isready", "-U", {{ .Values.postgresql.auth.username | quote }}, "-d", {{ .Values.postgresql.auth.database | quote }}]
             initialDelaySeconds: 30
             periodSeconds: 10
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", {{ .Values.postgresql.auth.username | quote }}]
+              command: ["pg_isready", "-U", {{ .Values.postgresql.auth.username | quote }}, "-d", {{ .Values.postgresql.auth.database | quote }}]
             initialDelaySeconds: 5
             periodSeconds: 5
   {{- if .Values.postgresql.persistence.enabled }}
