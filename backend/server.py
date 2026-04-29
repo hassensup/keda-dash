@@ -37,6 +37,8 @@ from backend.schemas import (
 # ============ ORM MODELS ============
 class UserModel(Base):
     __tablename__ = "users"
+    __table_args__ = {'extend_existing': True}
+    
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     email = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=True)  # Changed to nullable for Okta users
@@ -53,6 +55,8 @@ class UserModel(Base):
 
 class PermissionModel(Base):
     __tablename__ = "permissions"
+    __table_args__ = {'extend_existing': True}
+    
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     action = Column(String, nullable=False)  # 'read' or 'write'
@@ -68,6 +72,8 @@ class PermissionModel(Base):
 
 class ScaledObjectModel(Base):
     __tablename__ = "scaled_objects"
+    __table_args__ = {'extend_existing': True}
+    
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, nullable=False)
     namespace = Column(String, nullable=False, default="default")
@@ -87,6 +93,8 @@ class ScaledObjectModel(Base):
 
 class CronEventModel(Base):
     __tablename__ = "cron_events"
+    __table_args__ = {'extend_existing': True}
+    
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     scaled_object_id = Column(String, ForeignKey("scaled_objects.id", ondelete="CASCADE"), nullable=False)
     name = Column(String, nullable=False)
