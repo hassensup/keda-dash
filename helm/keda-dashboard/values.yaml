@@ -77,16 +77,40 @@ rbac:
   create: true
 
 ingress:
+  # Enable Ingress to expose the application publicly
   enabled: false
+  
+  # Ingress class name (e.g., nginx, alb, traefik)
   className: "nginx"
+  
+  # Annotations for Ingress configuration
+  # Examples for different Ingress controllers:
   annotations: {}
+    # For NGINX Ingress Controller:
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    
+    # For AWS ALB Ingress Controller:
+    # alb.ingress.kubernetes.io/scheme: internet-facing
+    # alb.ingress.kubernetes.io/target-type: ip
+    # alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    # alb.ingress.kubernetes.io/ssl-redirect: '443'
+    # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:region:account:certificate/xxx
+  
+  # Ingress hosts configuration
   hosts:
     - host: keda-dashboard.local
       paths:
-        - path: /api
-          serviceName: backend
-          port: 8001
+        - path: /
+          pathType: Prefix
+  
+  # TLS configuration for HTTPS
   tls: []
+    # - secretName: keda-dashboard-tls
+    #   hosts:
+    #     - keda-dashboard.example.com
 
 postgresql:
   enabled: true

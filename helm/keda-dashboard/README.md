@@ -184,13 +184,14 @@ helm install keda-dashboard ./helm/keda-dashboard \
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `ingress.enabled` | Enable ingress | `false` |
-| `ingress.className` | Ingress class name | `nginx` |
+| `ingress.className` | Ingress class name (nginx, alb, traefik) | `nginx` |
 | `ingress.annotations` | Ingress annotations | `{}` |
 | `ingress.hosts[0].host` | Hostname | `keda-dashboard.local` |
-| `ingress.hosts[0].paths[0].path` | Path | `/api` |
-| `ingress.hosts[0].paths[0].serviceName` | Service name | `backend` |
-| `ingress.hosts[0].paths[0].port` | Service port | `8001` |
+| `ingress.hosts[0].paths[0].path` | Path | `/` |
+| `ingress.hosts[0].paths[0].pathType` | Path type (Prefix or Exact) | `Prefix` |
 | `ingress.tls` | TLS configuration | `[]` |
+
+**See [INGRESS_SETUP.md](./INGRESS_SETUP.md) for detailed Ingress configuration guide.**
 
 ### RBAC Configuration
 

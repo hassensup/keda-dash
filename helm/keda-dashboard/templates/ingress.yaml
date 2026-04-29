@@ -30,12 +30,12 @@ spec:
         paths:
           {{- range .paths }}
           - path: {{ .path }}
-            pathType: {{ .pathType }}
+            pathType: {{ .pathType | default "Prefix" }}
             backend:
               service:
-                name: {{ include "keda-dashboard.fullname" $ }}
+                name: {{ include "keda-dashboard.fullname" $ }}-backend
                 port:
-                  number: {{ $.Values.service.port }}
+                  number: {{ $.Values.backend.service.port }}
           {{- end }}
     {{- end }}
 {{- end }}

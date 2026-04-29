@@ -1,0 +1,49 @@
+# Example configuration for NGINX Ingress Controller
+# Usage: helm install keda-dash ./helm/keda-dashboard -f examples/values-ingress-nginx.yaml
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    # Force HTTPS redirect
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    
+    # Increase body size for file uploads
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    
+    # Enable CORS (if needed)
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    
+    # Use cert-manager for automatic TLS certificates
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    
+    # Optional: Rate limiting
+    # nginx.ingress.kubernetes.io/limit-rps: "10"
+    
+  hosts:
+    - host: keda-dashboard.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  
+  tls:
+    - secretName: keda-dashboard-tls
+      hosts:
+        - keda-dashboard.example.com
+
+# Update Okta redirect URI to match the public URL
+auth:
+  okta:
+    enabled: true
+    domain: "your-org.okta.com"
+    clientId: "your-client-id"
+    clientSecret: "your-client-secret"
+    redirectUri: "https://keda-dashboard.example.com/api/auth/okta/callback"
+    scopes: "openid profile email"
+
+# Update CORS origins to match the public URL
+backend:
+  config:
+    corsOrigins: "https://keda-dashboard.example.com"

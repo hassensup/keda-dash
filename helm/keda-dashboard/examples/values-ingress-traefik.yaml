@@ -1,0 +1,45 @@
+# Example configuration for Traefik Ingress Controller
+# Usage: helm install keda-dash ./helm/keda-dashboard -f examples/values-ingress-traefik.yaml
+
+ingress:
+  enabled: true
+  className: "traefik"
+  annotations:
+    # Enable TLS
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    
+    # Redirect HTTP to HTTPS
+    traefik.ingress.kubernetes.io/redirect-entry-point: https
+    traefik.ingress.kubernetes.io/redirect-permanent: "true"
+    
+    # Use cert-manager for automatic TLS certificates
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    
+    # Optional: Middleware for additional features
+    # traefik.ingress.kubernetes.io/router.middlewares: default-compress@kubernetescrd,default-ratelimit@kubernetescrd
+    
+  hosts:
+    - host: keda-dashboard.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  
+  tls:
+    - secretName: keda-dashboard-tls
+      hosts:
+        - keda-dashboard.example.com
+
+# Update Okta redirect URI to match the public URL
+auth:
+  okta:
+    enabled: true
+    domain: "your-org.okta.com"
+    clientId: "your-client-id"
+    clientSecret: "your-client-secret"
+    redirectUri: "https://keda-dashboard.example.com/api/auth/okta/callback"
+    scopes: "openid profile email"
+
+# Update CORS origins to match the public URL
+backend:
+  config:
+    corsOrigins: "https://keda-dashboard.example.com"
