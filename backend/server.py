@@ -290,31 +290,16 @@ async def seed_data():
 @asynccontextmanager
 async def lifespan(app):
     global k8s_service
+    
+    # Create all tables from ORM models
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     
-    # Migration: Add scaling_behavior_json column if it doesn't exist
-    async with engine.begin() as conn:
-        def add_column_if_not_exists(connection):
-            from sqlalchemy import inspect, text
-            inspector = inspect(connection)
-            columns = [col['name'] for col in inspector.get_columns('scaled_objects')]
-            if 'scaling_behavior_json' not in columns:
-                logger.info("Adding scaling_behavior_json column to scaled_objects table")
-                # Detect database type
-                dialect_name = connection.dialect.name
-                if dialect_name == 'postgresql':
-                    connection.execute(text(
-                        "ALTER TABLE scaled_objects ADD COLUMN scaling_behavior_json TEXT"
-                    ))
-                elif dialect_name == 'sqlite':
-                    connection.execute(text(
-                        "ALTER TABLE scaled_objects ADD COLUMN scaling_behavior_json TEXT"
-                    ))
-                logger.info("Column scaling_behavior_json added successfully")
-        
-        await conn.run_sync(add_column_if_not_exists)
+    # Apply SQL migrations automatically
+    logger.info("Applying database migrations...")
+    await apply_sql_migrations()
     
+    # Seed initial data
     await seed_data()
 
     # Initialize K8s service
@@ -326,6 +311,43 @@ async def lifespan(app):
 
     yield
     await engine.dispose()
+
+
+async def apply_sql_migrations():
+    """Apply all SQL migrations from migrations/ directory."""
+    from pathlib import Path
+    from sqlalchemy import text
+    
+    migrations_dir = Path(__file__).parent / "migrations"
+    migration_files = sorted(migrations_dir.glob("*.sql"))
+    
+    if not migration_files:
+        logger.warning(f"No migration files found in {migrations_dir}")
+        return
+    
+    logger.info(f"Found {len(migration_files)} migration files")
+    
+    async with engine.begin() as conn:
+        for migration_file in migration_files:
+            logger.info(f"Applying migration: {migration_file.name}")
+            
+            try:
+                # Read migration SQL
+                with open(migration_file, 'r') as f:
+                    sql_content = f.read()
+                
+                # For PostgreSQL, execute the entire script
+                # The DO blocks handle idempotency
+                await conn.execute(text(sql_content))
+                
+                logger.info(f"✅ Successfully applied: {migration_file.name}")
+                
+            except Exception as e:
+                # Log warning but continue - migrations might be idempotent
+                logger.warning(f"⚠️  Migration {migration_file.name}: {e}")
+                logger.info("Continuing (migration might already be applied)...")
+    
+    logger.info("✅ All migrations processed")
 
 
 # ============ APP SETUP ============
