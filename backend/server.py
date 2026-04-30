@@ -246,6 +246,20 @@ async def lifespan(app):
     )
     logger.info(f"K8s service initialized: mode={k8s_service.get_mode()}, connected={k8s_service.is_connected()}")
 
+    # Initialize permissions router with dependencies (must be after k8s_service is created)
+    initialize_permissions_router(
+        async_session_maker=async_session_maker,
+        user_model=UserModel,
+        permission_model=PermissionModel,
+        scaled_object_model=ScaledObjectModel,
+        permission_schema=Permission,
+        permission_create_schema=PermissionCreate,
+        get_current_user=get_current_user,
+        rbac_engine_class=RBACEngine,
+        k8s_service=k8s_service
+    )
+    logger.info("Permissions router initialized")
+
     yield
     await engine.dispose()
 
@@ -848,18 +862,8 @@ from backend.auth.auth_router import router as auth_router
 from backend.permissions.router import router as permissions_router, initialize_permissions_router
 from backend.rbac.engine import RBACEngine
 
-# Initialize permissions router with dependencies
-initialize_permissions_router(
-    async_session_maker=async_session_maker,
-    user_model=UserModel,
-    permission_model=PermissionModel,
-    scaled_object_model=ScaledObjectModel,
-    permission_schema=Permission,
-    permission_create_schema=PermissionCreate,
-    get_current_user=get_current_user,
-    rbac_engine_class=RBACEngine,
-    k8s_service=k8s_service
-)
+# Note: initialize_permissions_router() is called in the lifespan function
+# after k8s_service is created
 
 app.include_router(auth_router)
 app.include_router(permissions_router)
