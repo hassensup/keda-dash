@@ -111,13 +111,27 @@ _require_admin = None
 
 def _get_require_admin():
     """Get the require_admin dependency (for use in route decorators)."""
-    if _require_admin is None:
-        raise RuntimeError("Permissions router not initialized")
-    return _require_admin
+    async def _dependency_wrapper(request: Request) -> dict:
+        if _require_admin is None:
+            raise RuntimeError("Permissions router not initialized")
+        return await _require_admin(request)
+    return _dependency_wrapper
+
+
+# Create a callable that can be used in Depends()
+class RequireAdminDependency:
+    """Callable dependency that checks for admin role."""
+    async def __call__(self, request: Request) -> dict:
+        if _require_admin is None:
+            raise RuntimeError("Permissions router not initialized")
+        return await _require_admin(request)
+
+
+_require_admin_dependency = RequireAdminDependency()
 
 
 @router.get("/users", response_model=List[dict])
-async def list_users_with_permissions(admin_user: dict = Depends(_get_require_admin)):
+async def list_users_with_permissions(admin_user: dict = Depends(_require_admin_dependency)):
     """
     List all users with their permission counts.
     
@@ -159,7 +173,7 @@ async def list_users_with_permissions(admin_user: dict = Depends(_get_require_ad
 
 
 @router.get("/users/{user_id}")
-async def get_user_permissions(user_id: str, admin_user: dict = Depends(_get_require_admin)):
+async def get_user_permissions(user_id: str, admin_user: dict = Depends(_require_admin_dependency)):
     """
     Get all permissions for a specific user.
     
@@ -199,7 +213,7 @@ async def get_user_permissions(user_id: str, admin_user: dict = Depends(_get_req
 @router.post("/", status_code=201)
 async def create_permission(
     data: dict,
-    admin_user: dict = Depends(_get_require_admin)
+    admin_user: dict = Depends(_require_admin_dependency)
 ):
     """
     Create a new permission for a user.
@@ -378,7 +392,7 @@ async def create_permission(
 @router.delete("/{permission_id}", status_code=200)
 async def delete_permission(
     permission_id: str,
-    admin_user: dict = Depends(_get_require_admin)
+    admin_user: dict = Depends(_require_admin_dependency)
 ):
     """
     Delete a permission.
