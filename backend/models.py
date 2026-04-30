@@ -18,8 +18,10 @@ def generate_uuid():
 
 
 def get_current_time():
-    """Get current datetime for timestamp columns."""
-    return datetime.now()
+    """Get current datetime for timestamp columns (timezone-naive for PostgreSQL compatibility)."""
+    from datetime import timezone
+    # Return timezone-naive datetime for PostgreSQL TIMESTAMP WITHOUT TIME ZONE
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class UserModel(Base):

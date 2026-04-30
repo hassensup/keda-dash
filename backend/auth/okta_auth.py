@@ -358,7 +358,8 @@ class OktaAuthHandler:
                 user.okta_subject = okta_subject
                 # Clear password hash for Okta users (account linking scenario)
                 user.password_hash = None
-                user.updated_at = datetime.now(timezone.utc)
+                # Use timezone-naive datetime for PostgreSQL compatibility
+                user.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
             else:
                 # Create new user
                 logger.info(f"Creating new user profile for email={email}")
