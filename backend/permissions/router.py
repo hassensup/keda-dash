@@ -221,7 +221,9 @@ async def create_permission(
     # Validate input using Pydantic schema
     try:
         validated_data = _permission_create_schema(**data)
+        logger.info(f"Creating permission for user_id={validated_data.user_id}, namespace={validated_data.namespace}, scope={validated_data.scope}")
     except Exception as e:
+        logger.error(f"Permission validation failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     
     async with _async_session_maker() as session:
@@ -232,7 +234,10 @@ async def create_permission(
         user = user_result.scalar_one_or_none()
         
         if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+            logger.error(f"User not found: {validated_data.user_id}")
+            raise HTTPException(status_code=404, detail=f"User not found: {validated_data.user_id}")
+        
+        logger.info(f"User validated: {user.email}")
         
         # Validate namespace exists
         # In in-cluster mode, check Kubernetes namespaces
@@ -242,13 +247,19 @@ async def create_permission(
             # Check if namespace exists in Kubernetes
             try:
                 namespaces = await _k8s_service.list_namespaces()
+                logger.info(f"Available namespaces in cluster: {namespaces}")
+                logger.info(f"Requested namespace: {validated_data.namespace}")
+                
                 if validated_data.namespace not in namespaces:
                     raise HTTPException(
                         status_code=404,
-                        detail=f"Namespace '{validated_data.namespace}' not found in Kubernetes"
+                        detail=f"Namespace '{validated_data.namespace}' not found in Kubernetes. Available namespaces: {', '.join(namespaces)}"
                     )
+                logger.info(f"Namespace '{validated_data.namespace}' validated successfully")
+            except HTTPException:
+                raise
             except Exception as e:
-                logger.warning(f"Could not validate namespace in Kubernetes: {e}")
+                logger.error(f"Could not validate namespace in Kubernetes: {e}", exc_info=True)
                 # Continue anyway - namespace might exist but we can't verify
         else:
             # Mock mode - check database
