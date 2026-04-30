@@ -55,7 +55,7 @@ export default function PermissionForm({ userId, onPermissionAdded }) {
 
     setSubmitting(true);
     try {
-      await api.post("/permissions", {
+      await api.post("/permissions/", {
         user_id: userId,
         action,
         scope,
