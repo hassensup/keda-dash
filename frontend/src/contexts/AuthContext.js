@@ -9,6 +9,17 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const checkAuth = useCallback(async () => {
+    // Check for token in URL first (Okta callback)
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlToken = urlParams.get("token");
+    
+    if (urlToken) {
+      // Store token from URL
+      localStorage.setItem("token", urlToken);
+      // Clean URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    
     const token = localStorage.getItem("token");
     if (!token) {
       setUser(null);
