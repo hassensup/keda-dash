@@ -222,6 +222,7 @@ async def create_permission(
     try:
         validated_data = _permission_create_schema(**data)
         logger.info(f"Creating permission for user_id={validated_data.user_id}, namespace={validated_data.namespace}, scope={validated_data.scope}")
+        logger.info(f"_k8s_service is: {_k8s_service}, mode: {_k8s_service.get_mode() if _k8s_service else 'None'}")
     except Exception as e:
         logger.error(f"Permission validation failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -243,7 +244,10 @@ async def create_permission(
         # In in-cluster mode, check Kubernetes namespaces
         # In mock mode, check if any ScaledObject exists in this namespace
         
+        logger.info(f"Checking namespace validation: _k8s_service={_k8s_service is not None}, mode={_k8s_service.get_mode() if _k8s_service else 'None'}")
+        
         if _k8s_service and _k8s_service.get_mode() == "in-cluster":
+            logger.info("Using in-cluster mode for namespace validation")
             # Check if namespace exists in Kubernetes
             try:
                 namespaces = await _k8s_service.list_namespaces()
@@ -262,6 +266,7 @@ async def create_permission(
                 logger.error(f"Could not validate namespace in Kubernetes: {e}", exc_info=True)
                 # Continue anyway - namespace might exist but we can't verify
         else:
+            logger.info("Using mock mode for namespace validation (checking database)")
             # Mock mode - check database
             namespace_result = await session.execute(
                 select(_scaled_object_model).where(_scaled_object_model.namespace == validated_data.namespace).limit(1)
@@ -269,6 +274,7 @@ async def create_permission(
             namespace_exists = namespace_result.scalar_one_or_none() is not None
             
             if not namespace_exists:
+                logger.error(f"Namespace '{validated_data.namespace}' not found in database")
                 raise HTTPException(
                     status_code=404,
                     detail=f"Namespace '{validated_data.namespace}' not found"
