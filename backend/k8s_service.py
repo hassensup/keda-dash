@@ -422,20 +422,30 @@ class RealK8sService(K8sScaledObjectService):
             logger.info(f"[DEBUG K8s] About to send update to Kubernetes API")
 
             # Handle name/namespace change via delete + recreate
-            new_name = data.get("name", name)
-            new_ns = data.get("namespace", ns)
-            if new_name != name or new_ns != ns:
+            # IMPORTANT: Only check for changes if name/namespace are explicitly provided
+            new_name = data.get("name")
+            new_ns = data.get("namespace")
+            
+            # Only trigger delete+recreate if name or namespace are explicitly changed
+            if (new_name is not None and new_name != name) or (new_ns is not None and new_ns != ns):
+                logger.warning(f"[DEBUG K8s] Name or namespace change detected: {name}/{ns} -> {new_name}/{new_ns}")
+                logger.warning(f"[DEBUG K8s] This will DELETE and RECREATE the ScaledObject!")
+                
+                # Use the new values or keep the old ones
+                final_name = new_name if new_name is not None else name
+                final_ns = new_ns if new_ns is not None else ns
+                
                 self._custom_api.delete_namespaced_custom_object(
                     group=KEDA_GROUP, version=KEDA_VERSION,
                     namespace=ns, plural=KEDA_PLURAL, name=name
                 )
-                existing["metadata"]["name"] = new_name
-                existing["metadata"]["namespace"] = new_ns
+                existing["metadata"]["name"] = final_name
+                existing["metadata"]["namespace"] = final_ns
                 existing["metadata"].pop("resourceVersion", None)
                 existing["metadata"].pop("uid", None)
                 return self._custom_api.create_namespaced_custom_object(
                     group=KEDA_GROUP, version=KEDA_VERSION,
-                    namespace=new_ns, plural=KEDA_PLURAL, body=existing
+                    namespace=final_ns, plural=KEDA_PLURAL, body=existing
                 )
             else:
                 result = self._custom_api.replace_namespaced_custom_object(
