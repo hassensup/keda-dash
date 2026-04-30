@@ -10,6 +10,18 @@ data:
   ADMIN_EMAIL: {{ .Values.backend.config.adminEmail | quote }}
   K8S_MODE: {{ .Values.backend.config.k8sMode | quote }}
   
+  # Frontend URL for OAuth redirects
+  {{- if .Values.ingress.enabled }}
+  {{- $host := index .Values.ingress.hosts 0 }}
+  {{- if .Values.ingress.tls }}
+  FRONTEND_URL: {{ printf "https://%s" $host.host | quote }}
+  {{- else }}
+  FRONTEND_URL: {{ printf "http://%s" $host.host | quote }}
+  {{- end }}
+  {{- else }}
+  FRONTEND_URL: "http://localhost:3000"
+  {{- end }}
+  
   # Authentication feature flags
   LOCAL_AUTH_ENABLED: {{ .Values.auth.local.enabled | quote }}
   OKTA_ENABLED: {{ .Values.auth.okta.enabled | quote }}

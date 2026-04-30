@@ -167,11 +167,13 @@ async def okta_login():
     Okta SSO login initiation endpoint.
     
     Generates secure random state parameter for CSRF protection,
-    stores state in session/cache, and returns redirect URL to Okta
+    stores state in session/cache, and redirects user to Okta
     authorization endpoint.
     
     Requirements: 1.2, 1.4, 2.1, 2.3
     """
+    from fastapi.responses import RedirectResponse
+    
     # Check if Okta is enabled
     if okta_auth_handler is None:
         logger.warning("Okta login attempted but Okta is not enabled")
@@ -190,10 +192,10 @@ async def okta_login():
         # Get authorization URL from Okta handler
         authorization_url = okta_auth_handler.get_authorization_url(state)
         
-        logger.info(f"Generated Okta login URL with state={state[:8]}...")
+        logger.info(f"Redirecting to Okta login with state={state[:8]}...")
         
-        # Return authorization URL for client to redirect
-        return {"authorization_url": authorization_url}
+        # Redirect user to Okta authorization endpoint
+        return RedirectResponse(url=authorization_url, status_code=302)
         
     except Exception as e:
         logger.error(f"Error generating Okta login URL: {str(e)}")
@@ -353,8 +355,14 @@ async def okta_callback(response: Response, request: Request, code: Optional[str
         
         logger.info(f"Okta authentication successful for user {user_profile['email']}")
         
-        # Return user profile with token
-        return user_profile
+        # Redirect to frontend with token in URL fragment (will be stored in localStorage by frontend)
+        # Using URL fragment (#) instead of query parameter (?) for security (not sent to server)
+        from fastapi.responses import RedirectResponse
+        frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+        redirect_url = f"{frontend_url}/?token={jwt_token}"
+        
+        logger.info(f"Redirecting to frontend: {frontend_url}")
+        return RedirectResponse(url=redirect_url, status_code=302)
         
     except ValueError as e:
         # Token validation or profile sync failed

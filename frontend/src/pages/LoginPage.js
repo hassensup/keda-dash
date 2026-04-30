@@ -33,6 +33,21 @@ export default function LoginPage() {
     fetchAuthConfig();
   }, []);
 
+  // Handle Okta callback with token in URL
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get("token");
+    
+    if (token) {
+      // Store token and redirect to home
+      localStorage.setItem("token", token);
+      // Clean URL
+      window.history.replaceState({}, document.title, "/");
+      // Redirect to home
+      navigate("/");
+    }
+  }, [navigate]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
