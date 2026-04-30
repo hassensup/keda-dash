@@ -180,6 +180,23 @@ async def okta_login():
         raise HTTPException(status_code=404, detail="Okta authentication not available")
     
     try:
+        # Log Okta configuration for debugging
+        logger.info("=" * 80)
+        logger.info("OKTA LOGIN REQUEST - Configuration Details")
+        logger.info("=" * 80)
+        logger.info(f"Okta Domain: {okta_auth_handler.config.domain}")
+        logger.info(f"Okta Client ID: {okta_auth_handler.config.client_id}")
+        logger.info(f"Okta Redirect URI: {okta_auth_handler.config.redirect_uri}")
+        logger.info(f"Okta Scopes: {okta_auth_handler.config.scopes}")
+        
+        # Log the base URL that will be used
+        try:
+            base_url = okta_auth_handler.config._get_base_url()
+            logger.info(f"Base URL: {base_url}")
+            logger.info(f"Authorization Endpoint: {okta_auth_handler.config.get_authorization_endpoint()}")
+        except Exception as e:
+            logger.error(f"Error getting base URL: {e}")
+        
         # Generate secure random state parameter (32 bytes = 43 chars base64)
         state = secrets.token_urlsafe(32)
         
@@ -192,13 +209,15 @@ async def okta_login():
         # Get authorization URL from Okta handler
         authorization_url = okta_auth_handler.get_authorization_url(state)
         
-        logger.info(f"Redirecting to Okta login with state={state[:8]}...")
+        logger.info(f"State: {state[:8]}...")
+        logger.info(f"Full Authorization URL: {authorization_url}")
+        logger.info("=" * 80)
         
         # Redirect user to Okta authorization endpoint
         return RedirectResponse(url=authorization_url, status_code=302)
         
     except Exception as e:
-        logger.error(f"Error generating Okta login URL: {str(e)}")
+        logger.error(f"Error generating Okta login URL: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to initiate Okta login")
 
 

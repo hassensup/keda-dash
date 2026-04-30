@@ -85,7 +85,14 @@ class OktaAuthHandler:
         auth_endpoint = self.config.get_authorization_endpoint()
         url = f"{auth_endpoint}?{urlencode(params)}"
         
-        logger.info(f"Generated Okta authorization URL with state={state}")
+        logger.info(f"[OKTA] Generated authorization URL:")
+        logger.info(f"[OKTA]   Endpoint: {auth_endpoint}")
+        logger.info(f"[OKTA]   Client ID: {self.config.client_id}")
+        logger.info(f"[OKTA]   Redirect URI: {self.config.redirect_uri}")
+        logger.info(f"[OKTA]   Scopes: {self.config.scopes}")
+        logger.info(f"[OKTA]   State: {state[:8]}...")
+        logger.info(f"[OKTA]   Full URL: {url}")
+        
         return url
     
     async def exchange_code_for_tokens(self, code: str) -> Dict[str, Any]:

@@ -75,13 +75,21 @@ class OktaConfig(BaseModel):
         if not self.domain:
             raise ValueError("Okta domain not configured")
         
+        logger.info(f"[OKTA CONFIG] Building base URL from domain: {self.domain}")
+        
         # If domain already contains /oauth2/, it's a custom authorization server
         if "/oauth2/" in self.domain:
             # Domain format: groupecanalplus.okta.com/oauth2/ausbk7e6q48W7VUZr417
-            return f"https://{self.domain}"
+            base_url = f"https://{self.domain}"
+            logger.info(f"[OKTA CONFIG] Detected Custom Authorization Server")
+            logger.info(f"[OKTA CONFIG] Base URL: {base_url}")
+            return base_url
         else:
             # Domain format: groupecanalplus.okta.com (default org server)
-            return f"https://{self.domain}/oauth2/default"
+            base_url = f"https://{self.domain}/oauth2/default"
+            logger.info(f"[OKTA CONFIG] Detected Org Authorization Server (default)")
+            logger.info(f"[OKTA CONFIG] Base URL: {base_url}")
+            return base_url
     
     def get_authorization_endpoint(self) -> str:
         """Get Okta authorization endpoint URL."""
