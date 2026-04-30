@@ -347,19 +347,22 @@ async def create_permission(
             scope=validated_data.scope,
             namespace=validated_data.namespace,
             object_name=validated_data.object_name,
-            created_by=admin_user["id"]
+            created_by=admin_user.get("id") if isinstance(admin_user, dict) else admin_user.id
         )
         
+        admin_email = admin_user.get("email", "unknown") if isinstance(admin_user, dict) else getattr(admin_user, "email", "unknown")
+        admin_id = admin_user.get("id") if isinstance(admin_user, dict) else admin_user.id
+        
         logger.info(
-            f"Permission granted by admin {admin_user.get('email', 'unknown')}: "
+            f"Permission granted by admin {admin_email}: "
             f"user={user.email}, action={validated_data.action}, scope={validated_data.scope}, "
             f"namespace={validated_data.namespace}, object_name={validated_data.object_name}"
         )
         
         # Log permission grant to audit log
         audit_logger.log_permission_granted(
-            admin_user_id=admin_user["id"],
-            admin_user_email=admin_user.get("email", "unknown"),
+            admin_user_id=admin_id,
+            admin_user_email=admin_email,
             target_user_id=user.id,
             target_user_email=user.email,
             action=validated_data.action,
