@@ -226,12 +226,15 @@ class OktaAuthHandler:
             signing_key = jwk_client.get_signing_key_from_jwt(id_token)
             
             # Validate token
+            # Get expected issuer from config
+            expected_issuer = self.config._get_base_url()
+            
             claims = pyjwt.decode(
                 id_token,
                 signing_key.key,
                 algorithms=["RS256"],
                 audience=self.config.client_id,
-                issuer=f"https://{self.config.domain}/oauth2/v1",
+                issuer=expected_issuer,
                 options={
                     "verify_signature": True,
                     "verify_exp": True,

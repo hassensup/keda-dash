@@ -23,7 +23,7 @@ class OktaConfig(BaseModel):
     """
     domain: Optional[str] = Field(
         default=None,
-        description="Okta domain (e.g., 'your-org.okta.com')"
+        description="Okta domain (e.g., 'your-org.okta.com' or 'your-org.okta.com/oauth2/aus123')"
     )
     client_id: Optional[str] = Field(
         default=None,
@@ -64,29 +64,40 @@ class OktaConfig(BaseModel):
             self.redirect_uri
         ])
     
-    def get_authorization_endpoint(self) -> str:
-        """Get Okta authorization endpoint URL."""
+    def _get_base_url(self) -> str:
+        """
+        Get base URL for Okta endpoints.
+        
+        Handles both:
+        - Org Authorization Server: domain.okta.com
+        - Custom Authorization Server: domain.okta.com/oauth2/ausXXX
+        """
         if not self.domain:
             raise ValueError("Okta domain not configured")
-        return f"https://{self.domain}/oauth2/v1/authorize"
+        
+        # If domain already contains /oauth2/, it's a custom authorization server
+        if "/oauth2/" in self.domain:
+            # Domain format: groupecanalplus.okta.com/oauth2/ausbk7e6q48W7VUZr417
+            return f"https://{self.domain}"
+        else:
+            # Domain format: groupecanalplus.okta.com (default org server)
+            return f"https://{self.domain}/oauth2/default"
+    
+    def get_authorization_endpoint(self) -> str:
+        """Get Okta authorization endpoint URL."""
+        return f"{self._get_base_url()}/v1/authorize"
     
     def get_token_endpoint(self) -> str:
         """Get Okta token endpoint URL."""
-        if not self.domain:
-            raise ValueError("Okta domain not configured")
-        return f"https://{self.domain}/oauth2/v1/token"
+        return f"{self._get_base_url()}/v1/token"
     
     def get_userinfo_endpoint(self) -> str:
         """Get Okta userinfo endpoint URL."""
-        if not self.domain:
-            raise ValueError("Okta domain not configured")
-        return f"https://{self.domain}/oauth2/v1/userinfo"
+        return f"{self._get_base_url()}/v1/userinfo"
     
     def get_jwks_uri(self) -> str:
         """Get Okta JWKS URI for token validation."""
-        if not self.domain:
-            raise ValueError("Okta domain not configured")
-        return f"https://{self.domain}/oauth2/v1/keys"
+        return f"{self._get_base_url()}/v1/keys"
 
 
 class AuthConfig(BaseModel):
