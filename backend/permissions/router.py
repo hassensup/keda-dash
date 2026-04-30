@@ -49,6 +49,8 @@ def initialize_permissions_router(
     global _permission_schema, _permission_create_schema, _get_current_user, _rbac_engine_class
     global _require_admin, _k8s_service
     
+    logger.info(f"[INIT] Initializing permissions router with k8s_service={k8s_service}, type={type(k8s_service)}")
+    
     _async_session_maker = async_session_maker
     _user_model = user_model
     _permission_model = permission_model
@@ -58,6 +60,8 @@ def initialize_permissions_router(
     _get_current_user = get_current_user
     _rbac_engine_class = rbac_engine_class
     _k8s_service = k8s_service
+    
+    logger.info(f"[INIT] After assignment: _k8s_service={_k8s_service}, mode={_k8s_service.get_mode() if _k8s_service else 'None'}")
     
     # Create the require_admin dependency
     _require_admin = get_require_admin_dependency()
