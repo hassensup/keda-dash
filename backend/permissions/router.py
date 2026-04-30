@@ -231,33 +231,67 @@ async def create_permission(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         
-        # Validate namespace exists (check if any ScaledObject exists in this namespace)
-        namespace_result = await session.execute(
-            select(_scaled_object_model).where(_scaled_object_model.namespace == validated_data.namespace).limit(1)
-        )
-        namespace_exists = namespace_result.scalar_one_or_none() is not None
+        # Validate namespace exists
+        # In in-cluster mode, check Kubernetes namespaces
+        # In mock mode, check if any ScaledObject exists in this namespace
+        from backend.server import k8s_service
         
-        if not namespace_exists:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Namespace '{validated_data.namespace}' not found"
+        if k8s_service.get_mode() == "in-cluster":
+            # Check if namespace exists in Kubernetes
+            try:
+                namespaces = await k8s_service.list_namespaces()
+                if validated_data.namespace not in namespaces:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Namespace '{validated_data.namespace}' not found in Kubernetes"
+                    )
+            except Exception as e:
+                logger.warning(f"Could not validate namespace in Kubernetes: {e}")
+                # Continue anyway - namespace might exist but we can't verify
+        else:
+            # Mock mode - check database
+            namespace_result = await session.execute(
+                select(_scaled_object_model).where(_scaled_object_model.namespace == validated_data.namespace).limit(1)
             )
+            namespace_exists = namespace_result.scalar_one_or_none() is not None
+            
+            if not namespace_exists:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Namespace '{validated_data.namespace}' not found"
+                )
         
         # For object-scoped permissions, validate object exists
         if validated_data.scope == "object" and validated_data.object_name:
-            object_result = await session.execute(
-                select(_scaled_object_model).where(
-                    _scaled_object_model.namespace == validated_data.namespace,
-                    _scaled_object_model.name == validated_data.object_name
+            if k8s_service.get_mode() == "in-cluster":
+                # Check if ScaledObject exists in Kubernetes
+                try:
+                    obj_id = f"{validated_data.namespace}/{validated_data.object_name}"
+                    obj = await k8s_service.get_object(obj_id)
+                    
+                    if not obj:
+                        raise HTTPException(
+                            status_code=404,
+                            detail=f"ScaledObject '{validated_data.object_name}' not found in namespace '{validated_data.namespace}'"
+                        )
+                except Exception as e:
+                    logger.warning(f"Could not validate ScaledObject in Kubernetes: {e}")
+                    # Continue anyway - object might exist but we can't verify
+            else:
+                # Mock mode - check database
+                object_result = await session.execute(
+                    select(_scaled_object_model).where(
+                        _scaled_object_model.namespace == validated_data.namespace,
+                        _scaled_object_model.name == validated_data.object_name
+                    )
                 )
-            )
-            obj = object_result.scalar_one_or_none()
-            
-            if not obj:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"ScaledObject '{validated_data.object_name}' not found in namespace '{validated_data.namespace}'"
-                )
+                obj = object_result.scalar_one_or_none()
+                
+                if not obj:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"ScaledObject '{validated_data.object_name}' not found in namespace '{validated_data.namespace}'"
+                    )
         
         # Check if permission already exists
         existing_permission_result = await session.execute(
