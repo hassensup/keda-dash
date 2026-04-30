@@ -314,18 +314,24 @@ class RealK8sService(K8sScaledObjectService):
             )
             spec = existing.get("spec", {})
 
-            if "target_deployment" in data:
+            # Only update fields that are explicitly provided and not None
+            if "target_deployment" in data and data["target_deployment"] is not None:
                 spec["scaleTargetRef"] = {"name": data["target_deployment"]}
-            if "min_replicas" in data:
+            if "min_replicas" in data and data["min_replicas"] is not None:
                 spec["minReplicaCount"] = data["min_replicas"]
-            if "max_replicas" in data:
+            if "max_replicas" in data and data["max_replicas"] is not None:
                 spec["maxReplicaCount"] = data["max_replicas"]
-            if "cooldown_period" in data:
+            if "cooldown_period" in data and data["cooldown_period"] is not None:
                 spec["cooldownPeriod"] = data["cooldown_period"]
-            if "polling_interval" in data:
+            if "polling_interval" in data and data["polling_interval"] is not None:
                 spec["pollingInterval"] = data["polling_interval"]
-            if "triggers" in data:
-                spec["triggers"] = data["triggers"]
+            if "triggers" in data and data["triggers"] is not None:
+                # Clean triggers: remove soId field added by frontend
+                cleaned_triggers = []
+                for trigger in data["triggers"]:
+                    cleaned_trigger = {k: v for k, v in trigger.items() if k != "soId"}
+                    cleaned_triggers.append(cleaned_trigger)
+                spec["triggers"] = cleaned_triggers
             
             # Handle scaling behavior
             logger.info(f"[DEBUG K8s] About to check scaling_behavior. 'scaling_behavior' in data: {'scaling_behavior' in data}")
