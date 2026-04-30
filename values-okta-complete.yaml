@@ -1,0 +1,55 @@
+# Configuration complète pour Okta SSO
+# Remplacez les valeurs REMPLACER_PAR_* par vos valeurs réelles
+
+# Frontend Configuration
+frontend:
+  # ✅ URL publique de votre application
+  url: "https://keda-dashboard.dev.middle-bo.canal.aws.io-cplus.net"
+
+# Authentication Configuration
+auth:
+  # JWT token configuration
+  jwt:
+    secret: "REMPLACER_PAR_UN_SECRET_ALEATOIRE"  # Générer avec: openssl rand -base64 32
+    expirationHours: 24
+  
+  # Local authentication
+  local:
+    enabled: true
+  
+  # Okta SSO authentication
+  okta:
+    enabled: true
+    # Domaine Okta (sans -admin)
+    domain: "integrator-2906309.okta.com"
+    # Client ID de votre application Okta
+    clientId: "0oa12hyd5y32AhyPN698"
+    # Client Secret de votre application Okta
+    clientSecret: "REMPLACER_PAR_VOTRE_CLIENT_SECRET"
+    # URL de callback (doit correspondre à celle dans Okta)
+    redirectUri: "https://keda-dashboard.dev.middle-bo.canal.aws.io-cplus.net/api/auth/okta/callback"
+    # Scopes OAuth2
+    scopes: "openid profile email"
+
+# Backend Configuration
+backend:
+  config:
+    adminEmail: "admin@example.com"
+    adminPassword: "admin123"
+    corsOrigins: "*"
+    k8sMode: "in-cluster"
+
+# Ingress Configuration (optionnel si vous avez déjà un Ingress)
+ingress:
+  enabled: false  # Mettre à true si vous voulez créer un Ingress via Helm
+  className: "alb"
+  hosts:
+    - host: keda-dashboard.dev.middle-bo.canal.aws.io-cplus.net
+      paths:
+        - path: /
+          pathType: Prefix
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'

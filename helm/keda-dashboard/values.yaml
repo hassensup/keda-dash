@@ -1,5 +1,12 @@
 replicaCount: 1
 
+# Frontend Configuration
+frontend:
+  # Public URL where the frontend is accessible
+  # Used for OAuth redirects after Okta authentication
+  # If not set, will be derived from ingress.hosts or default to http://localhost:3000
+  url: ""
+
 # Backend Configuration
 backend:
   image:

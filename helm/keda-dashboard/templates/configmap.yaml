@@ -11,7 +11,20 @@ data:
   K8S_MODE: {{ .Values.backend.config.k8sMode | quote }}
   
   # Frontend URL for OAuth redirects
-  {{- if .Values.ingress.enabled }}
+  {{- if .Values.frontend }}
+  {{- if .Values.frontend.url }}
+  FRONTEND_URL: {{ .Values.frontend.url | quote }}
+  {{- else if .Values.ingress.enabled }}
+  {{- $host := index .Values.ingress.hosts 0 }}
+  {{- if .Values.ingress.tls }}
+  FRONTEND_URL: {{ printf "https://%s" $host.host | quote }}
+  {{- else }}
+  FRONTEND_URL: {{ printf "http://%s" $host.host | quote }}
+  {{- end }}
+  {{- else }}
+  FRONTEND_URL: "http://localhost:3000"
+  {{- end }}
+  {{- else if .Values.ingress.enabled }}
   {{- $host := index .Values.ingress.hosts 0 }}
   {{- if .Values.ingress.tls }}
   FRONTEND_URL: {{ printf "https://%s" $host.host | quote }}
