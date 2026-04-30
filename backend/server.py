@@ -857,7 +857,8 @@ initialize_permissions_router(
     permission_schema=Permission,
     permission_create_schema=PermissionCreate,
     get_current_user=get_current_user,
-    rbac_engine_class=RBACEngine
+    rbac_engine_class=RBACEngine,
+    k8s_service=k8s_service
 )
 
 app.include_router(auth_router)

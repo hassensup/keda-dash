@@ -25,6 +25,7 @@ _permission_schema = None
 _permission_create_schema = None
 _get_current_user = None
 _rbac_engine_class = None
+_k8s_service = None
 
 
 def initialize_permissions_router(
@@ -35,7 +36,8 @@ def initialize_permissions_router(
     permission_schema,
     permission_create_schema,
     get_current_user,
-    rbac_engine_class
+    rbac_engine_class,
+    k8s_service
 ):
     """
     Initialize the permissions router with dependencies from server.py.
@@ -45,7 +47,7 @@ def initialize_permissions_router(
     """
     global _async_session_maker, _user_model, _permission_model, _scaled_object_model
     global _permission_schema, _permission_create_schema, _get_current_user, _rbac_engine_class
-    global _require_admin
+    global _require_admin, _k8s_service
     
     _async_session_maker = async_session_maker
     _user_model = user_model
@@ -55,6 +57,7 @@ def initialize_permissions_router(
     _permission_create_schema = permission_create_schema
     _get_current_user = get_current_user
     _rbac_engine_class = rbac_engine_class
+    _k8s_service = k8s_service
     
     # Create the require_admin dependency
     _require_admin = get_require_admin_dependency()
@@ -234,12 +237,11 @@ async def create_permission(
         # Validate namespace exists
         # In in-cluster mode, check Kubernetes namespaces
         # In mock mode, check if any ScaledObject exists in this namespace
-        from backend.server import k8s_service
         
-        if k8s_service.get_mode() == "in-cluster":
+        if _k8s_service and _k8s_service.get_mode() == "in-cluster":
             # Check if namespace exists in Kubernetes
             try:
-                namespaces = await k8s_service.list_namespaces()
+                namespaces = await _k8s_service.list_namespaces()
                 if validated_data.namespace not in namespaces:
                     raise HTTPException(
                         status_code=404,
@@ -263,11 +265,11 @@ async def create_permission(
         
         # For object-scoped permissions, validate object exists
         if validated_data.scope == "object" and validated_data.object_name:
-            if k8s_service.get_mode() == "in-cluster":
+            if _k8s_service and _k8s_service.get_mode() == "in-cluster":
                 # Check if ScaledObject exists in Kubernetes
                 try:
                     obj_id = f"{validated_data.namespace}/{validated_data.object_name}"
-                    obj = await k8s_service.get_object(obj_id)
+                    obj = await _k8s_service.get_object(obj_id)
                     
                     if not obj:
                         raise HTTPException(
