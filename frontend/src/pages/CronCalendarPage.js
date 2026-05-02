@@ -153,8 +153,25 @@ export default function CronCalendarPage() {
 
   const openAddDialog = (date) => {
     const dateStr = format(date, "yyyy-MM-dd");
+    const dayOfMonth = format(date, "d");
+    const month = format(date, "M");
+    
+    // Pré-remplir les expressions cron avec la date sélectionnée
+    // Format: minute hour day month dayOfWeek
+    // Par défaut: 8h00 pour le début et 20h00 pour la fin
+    const prefilledStart = `0 8 ${dayOfMonth} ${month} *`;
+    const prefilledEnd = `0 20 ${dayOfMonth} ${month} *`;
+    
     setEditTrigger(null);
-    setForm({ ...EMPTY_TRIGGER });
+    setForm({ 
+      ...EMPTY_TRIGGER,
+      metadata: {
+        ...EMPTY_TRIGGER.metadata,
+        start: prefilledStart,
+        end: prefilledEnd
+      },
+      selectedDate: dateStr // Stocker la date pour référence
+    });
     setDialogOpen(true);
   };
 
@@ -364,6 +381,63 @@ export default function CronCalendarPage() {
                 </SelectContent>
               </Select>
             </div>
+            
+            {/* Afficher la date sélectionnée si disponible */}
+            {!editTrigger && form.selectedDate && (
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                <p className="text-sm font-medium text-blue-900">
+                  Date sélectionnée: <span className="font-semibold">{format(new Date(form.selectedDate), "d MMMM yyyy", { locale: fr })}</span>
+                </p>
+                <p className="text-xs text-blue-700 mt-1">Ajustez les heures de début et de fin ci-dessous</p>
+              </div>
+            )}
+            
+            {/* Sélecteurs d'heures simplifiés pour les nouveaux événements */}
+            {!editTrigger && form.selectedDate && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Heure de début</Label>
+                  <Input
+                    type="time"
+                    value={(() => {
+                      const parts = (form.metadata?.start || "0 8 * * *").split(" ");
+                      const hour = parts[1] || "8";
+                      const minute = parts[0] || "0";
+                      return `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
+                    })()}
+                    onChange={(e) => {
+                      const [hour, minute] = e.target.value.split(":");
+                      const parts = (form.metadata?.start || "0 8 * * *").split(" ");
+                      const newStart = `${minute} ${hour} ${parts[2]} ${parts[3]} ${parts[4]}`;
+                      setForm((p) => ({ ...p, metadata: { ...p.metadata, start: newStart } }));
+                    }}
+                    data-testid="event-start-time"
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Heure de fin</Label>
+                  <Input
+                    type="time"
+                    value={(() => {
+                      const parts = (form.metadata?.end || "0 20 * * *").split(" ");
+                      const hour = parts[1] || "20";
+                      const minute = parts[0] || "0";
+                      return `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
+                    })()}
+                    onChange={(e) => {
+                      const [hour, minute] = e.target.value.split(":");
+                      const parts = (form.metadata?.end || "0 20 * * *").split(" ");
+                      const newEnd = `${minute} ${hour} ${parts[2]} ${parts[3]} ${parts[4]}`;
+                      setForm((p) => ({ ...p, metadata: { ...p.metadata, end: newEnd } }));
+                    }}
+                    data-testid="event-end-time"
+                    className="h-9"
+                  />
+                </div>
+              </div>
+            )}
+            
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Cron Start Expression</Label>
               <Input
