@@ -15,6 +15,7 @@ Dashboard de gestion et de visualisation des ScaledObjects KEDA avec authentific
 - [Permissions et RBAC](#permissions-et-rbac)
 - [Développement](#développement)
 - [Déploiement](#déploiement)
+- [Documentation et Scripts](#documentation-et-scripts)
 
 ## 🎯 Vue d'ensemble
 
@@ -717,6 +718,44 @@ kubectl get clusterrolebinding keda-dash-keda-dashboard -o yaml
 ## 📄 Licence
 
 Ce projet est sous licence MIT. Voir le fichier `LICENSE` pour plus de détails.
+
+## 📚 Documentation et Scripts
+
+### 📖 Documentation Complète
+
+Toute la documentation du projet est disponible dans le dossier **[docs/](docs/)** :
+
+- **[docs/QUICK_START.md](docs/QUICK_START.md)** - Guide de démarrage rapide
+- **[docs/GUIDE_UTILISATION_CALENDRIER.md](docs/GUIDE_UTILISATION_CALENDRIER.md)** - Guide d'utilisation du calendrier
+- **[docs/DEPLOYMENT_INSTRUCTIONS.md](docs/DEPLOYMENT_INSTRUCTIONS.md)** - Instructions de déploiement détaillées
+- **[docs/OKTA_CONFIGURATION_GUIDE.md](docs/OKTA_CONFIGURATION_GUIDE.md)** - Configuration Okta complète
+- **[docs/TROUBLESHOOTING_POD_CRASH.md](docs/TROUBLESHOOTING_POD_CRASH.md)** - Dépannage des problèmes
+- Et 39 autres fichiers de documentation...
+
+👉 **Voir [docs/README.md](docs/README.md) pour l'index complet**
+
+### 🔧 Scripts Utilitaires
+
+Tous les scripts de déploiement et d'administration sont dans le dossier **[scripts/](scripts/)** :
+
+- **[scripts/redeploy-frontend.sh](scripts/redeploy-frontend.sh)** - Redéployer le frontend
+- **[scripts/push-changes.sh](scripts/push-changes.sh)** - Commit et push automatique
+- **[scripts/configure_okta.sh](scripts/configure_okta.sh)** - Configuration Okta
+- **[scripts/verify_deployment.sh](scripts/verify_deployment.sh)** - Vérifier le déploiement
+- Et 10 autres scripts...
+
+👉 **Voir [scripts/README.md](scripts/README.md) pour la liste complète**
+
+### 🎯 Liens Rapides
+
+| Besoin | Document |
+|--------|----------|
+| Démarrer rapidement | [docs/QUICK_START.md](docs/QUICK_START.md) |
+| Utiliser le calendrier | [docs/GUIDE_UTILISATION_CALENDRIER.md](docs/GUIDE_UTILISATION_CALENDRIER.md) |
+| Déployer l'application | [docs/DEPLOYMENT_INSTRUCTIONS.md](docs/DEPLOYMENT_INSTRUCTIONS.md) |
+| Configurer Okta | [docs/OKTA_CONFIGURATION_GUIDE.md](docs/OKTA_CONFIGURATION_GUIDE.md) |
+| Résoudre un problème | [docs/TROUBLESHOOTING_POD_CRASH.md](docs/TROUBLESHOOTING_POD_CRASH.md) |
+| Redéployer | [scripts/redeploy-frontend.sh](scripts/redeploy-frontend.sh) |
 
 ## 👥 Auteurs
 
